@@ -1,0 +1,3 @@
+[submodule "third_party/mini_chromium/mini_chromium"]
+	path = third_party/mini_chromium/mini_chromium
+	url = https://chromium.googlesource.com/chromium/mini_chromium
