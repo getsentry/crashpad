@@ -284,6 +284,9 @@ if(WIN32)
         win/session_end_watcher.h
         win/termination_codes.h
         win/xp_compat.h
+
+        misc/capture_context_win.asm
+        win/safe_terminate_process.asm
     )
 endif()
 
@@ -338,9 +341,8 @@ target_link_libraries(crashpad_util PUBLIC
 target_compile_definitions(crashpad_util PUBLIC "-DZLIB_CONST")
 
 if(WIN32)
-    # TODO:
-    #target_compile_definitions(crashpad_util PUBLIC "-DCRASHPAD_ZLIB_SOURCE_EXTERNAL")
-    #target_link_libraries(crashpad_util PUBLIC zlib)
+    target_compile_definitions(crashpad_util PUBLIC "-DCRASHPAD_ZLIB_SOURCE_EMBEDDED")
+    target_link_libraries(crashpad_util PUBLIC zlib)
 else()
     target_compile_definitions(crashpad_util PUBLIC "-DCRASHPAD_ZLIB_SOURCE_SYSTEM")
     target_link_libraries(crashpad_util PUBLIC "z")

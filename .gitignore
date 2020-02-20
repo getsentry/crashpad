@@ -21,6 +21,5 @@
 /third_party/linux/sysroot
 /third_party/lss/lss
 /third_party/gyp/gyp
-/third_party/zlib/zlib
 /xcodebuild
 tags

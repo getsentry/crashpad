@@ -83,3 +83,7 @@ if(APPLE)
 else()
     add_library(crashpad_compat STATIC ${COMPAT_SOURCES})
 endif()
+
+if(WIN32)
+    target_link_libraries(crashpad_compat getopt)
+endif()

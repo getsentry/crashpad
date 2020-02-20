@@ -123,6 +123,14 @@ if(APPLE)
 endif()
 
 if(WIN32)
-    target_link_libraries(mini_chromium "advapi32")
-    target_compile_options(mini_chromium PUBLIC "/wd4201")
+    target_link_libraries(mini_chromium "advapi32" "kernel32")
+    target_compile_options(mini_chromium PUBLIC "/wd4201" "/wd4996")
+    target_compile_definitions(mini_chromium PUBLIC
+        NOMINMAX
+        UNICODE
+        WIN32_LEAN_AND_MEAN
+        _CRT_SECURE_NO_WARNINGS
+        _HAS_EXCEPTIONS=0
+        _UNICODE
+    )
 endif()
