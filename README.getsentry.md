@@ -1,3 +1,13 @@
+# Sentry Modifications
+
+- File attachments support for MacOS and Windows. Based on changes made in
+  https://github.com/Youw/crashpad/, distributed with Apache 2.0 License.
+- Add `throws` declaration to `memfd_create` for compatibility with different
+  libc versions.
+- Build System Changes Listed Below
+
+# Build System Changes
+
 In order to minimize external dependencies, and to better integrate with
 `sentry-native`, this fork replaced usage of `depo_tools` with explicit
 submodules, and added CMake files for building.
@@ -36,3 +46,9 @@ included files):
 
 The important thing here is to keep the list of source files in sync when
 updating.
+
+# How To Update
+
+- Bump the submodules to the commit hashes specified in `./DEPS`
+- Go through the changes in `BUILD.gn` files, and apply them to the
+  corresponding `CMakeLists.txt`. See the list above.
