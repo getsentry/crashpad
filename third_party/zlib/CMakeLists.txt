@@ -24,9 +24,9 @@ list(APPEND ZLIB_SOURCES
     zlib/uncompr.c
     zlib/zconf.h
     zlib/zlib.h
-    #zlib/zlib_crashpad.h
     zlib/zutil.c
     zlib/zutil.h
+    zlib_crashpad.h
 )
 
 # TODO: x86/x64

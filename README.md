@@ -50,3 +50,6 @@ Based on changes made in https://github.com/Youw/crashpad/, distributed with Apa
 Generating patch:
 
     git format-patch --stdout master...HEAD > getsentry.patch
+
+See also [README.getsentry.md](README.getsentry.md) for more information on the
+build system changes, and on how to maintain this fork.
