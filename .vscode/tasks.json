@@ -15,7 +15,7 @@
       },
       "type": "shell",
       "windows": {
-          "command": "git submodule update --init --recursive; cmake -GNinja -Bbuild -H. -DCMAKE_BUILD_TYPE=Debug"
+          "command": "git submodule update --init --recursive; cmake -GNinja -Bout -H. -DCMAKE_BUILD_TYPE=Debug"
       }
     },
     {
@@ -23,7 +23,7 @@
         "type": "shell",
         "command": "ninja",
         "options": {
-            "cwd": "${workspaceRoot}/build"
+            "cwd": "${workspaceRoot}/out"
         },
         "problemMatcher": []
     },
