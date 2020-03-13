@@ -13,9 +13,7 @@
             "includePath": [
                 "${workspaceFolder}/include",
                 "${workspaceFolder}/src",
-                "${workspaceFolder}/external/libunwindstack-ndk/include",
-                "${workspaceFolder}/external/crashpad",
-                "${workspaceFolder}/external/crashpad/third_party/mini_chromium/mini_chromium"
+                "${workspaceFolder}/third_party/mini_chromium/mini_chromium"
             ],
             "defines": [
                 "_DEBUG",
