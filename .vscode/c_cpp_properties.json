@@ -11,8 +11,7 @@
                 "limitSymbolsToIncludedHeaders": true
             },
             "includePath": [
-                "${workspaceFolder}/include",
-                "${workspaceFolder}/src",
+                "${workspaceFolder}/**",
                 "${workspaceFolder}/third_party/mini_chromium/mini_chromium"
             ],
             "defines": [
