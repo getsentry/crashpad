@@ -58,8 +58,6 @@ target_link_libraries(crashpad_handler
     mini_chromium
 )
 
-
-
 if(WIN32) 
     if(MSVC)
         target_compile_options(crashpad_handler PUBLIC "/wd4201")

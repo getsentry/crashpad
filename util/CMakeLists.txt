@@ -364,6 +364,7 @@ if(WIN32)
         )
         target_compile_definitions(crashpad_util PRIVATE 
             "__STDC_VERSION__=199901L"
+            $<$<COMPILE_LANGUAGE:ASM_MASM>:__MINGW32__>
         )
     endif()
     if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
