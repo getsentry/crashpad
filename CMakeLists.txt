@@ -72,6 +72,11 @@ if(MSVC)
         /wd4577 # 'noexcept' used with no exception handling mode specified.
         /wd4996 # 'X' was declared deprecated.
     )
+elseif(MINGW)
+    #redirect to wmain
+    add_link_options(
+        -municode
+    )
 endif()
 
 add_subdirectory(client)

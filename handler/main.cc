@@ -44,11 +44,6 @@ int APIENTRY wWinMain(HINSTANCE, HINSTANCE, wchar_t*, int) {
   return crashpad::ToolSupport::Wmain(__argc, __wargv, HandlerMainAdaptor);
 }
 
-//MinGW specific
-int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR pCmdLine, int nCmdShow) {
-  return crashpad::ToolSupport::Wmain(__argc, __wargv, HandlerMainAdaptor);
-}
-
 // The default entry point for /subsystem:console. This is not currently used by
 // Crashpad’s own build, but may be used by other builds.
 int wmain(int argc, wchar_t* argv[]) {
