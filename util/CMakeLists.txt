@@ -375,8 +375,20 @@ if(APPLE)
     endif()
     list(TRANSFORM includes PREPEND "--include=")
 
-    if (CMAKE_OSX_SYSROOT)
+    if(CMAKE_OSX_SYSROOT)
         set(sdk --sdk ${CMAKE_OSX_SYSROOT})
+    endif()
+
+    # When building for Xcode, the `CMAKE_OSX_SYSROOT` is not set to a proper
+    # directory, but rather is `iphoneos`, which confuses `mig`.
+    # Also, Xcode uses a different `SDKROOT` depending on the `-sdk` flag
+    # provided to `xcodebuild`.
+    # Similarly, we don't know the arch at configure-time, because it changes
+    # at build time depending on the `-sdk` flag as well.
+    # We hack around this by consuming the arch list from the env.
+    if(XCODE)
+        set(archs --arch "FROM_ENV")
+        set(sdk --sdk "$SDKROOT")
     endif()
 
     # Create generate rule for each input file. Add each generated output
