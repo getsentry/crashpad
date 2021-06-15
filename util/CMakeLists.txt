@@ -405,7 +405,11 @@ if(APPLE)
     # We hack around this by consuming the arch list from the env.
     if(XCODE)
         set(archs --arch "FROM_ENV")
-        set(sdk --sdk "$SDKROOT")
+        # `SDKROOT` may be empty.
+        # In this case retain the SDK path from `CMAKE_OSX_SYSROOT`.
+        if(SDKROOT)
+            set(sdk --sdk "${SDKROOT}")
+        endif()
     endif()
 
     # Create generate rule for each input file. Add each generated output
