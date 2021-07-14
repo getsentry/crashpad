@@ -94,9 +94,9 @@ namespace crashpad {
 namespace {
 
 #if defined(OS_WIN) || defined(OS_LINUX) || defined(OS_CHROMEOS) || \
-    defined(OS_ANDROID)
+    defined(OS_ANDROID) || defined(OS_APPLE)
 #define ATTACHMENTS_SUPPORTED 1
-#endif  // OS_WIN || OS_LINUX || OS_CHROMEOS || OS_ANDROID
+#endif  // OS_WIN || OS_LINUX || OS_CHROMEOS || OS_ANDROID || OS_APPLE
 
 void Usage(const base::FilePath& me) {
   fprintf(stderr,
@@ -537,10 +537,9 @@ int HandlerMain(int argc,
     // Long options without short equivalents.
     kOptionLastChar = 255,
     kOptionAnnotation,
-#if defined(OS_WIN) || defined(OS_LINUX) || defined(OS_CHROMEOS) || \
-    defined(OS_ANDROID)
+#if defined(ATTACHMENTS_SUPPORTED)
     kOptionAttachment,
-#endif  // OS_WIN || OS_LINUX
+#endif  // ATTACHMENTS_SUPPORTED
     kOptionDatabase,
 #if defined(OS_APPLE)
     kOptionHandshakeFD,

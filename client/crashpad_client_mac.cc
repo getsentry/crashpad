@@ -124,6 +124,7 @@ class HandlerStarter final : public NotifyServer::DefaultInterface {
       const std::string& url,
       const std::map<std::string, std::string>& annotations,
       const std::vector<std::string>& arguments,
+      const std::vector<base::FilePath>& attachments,
       bool restartable) {
     base::mac::ScopedMachReceiveRight receive_right(
         NewMachPort(MACH_PORT_RIGHT_RECEIVE));
@@ -163,6 +164,7 @@ class HandlerStarter final : public NotifyServer::DefaultInterface {
                      url,
                      annotations,
                      arguments,
+                     attachments,
                      std::move(receive_right),
                      handler_restarter.get(),
                      false)) {
@@ -171,7 +173,7 @@ class HandlerStarter final : public NotifyServer::DefaultInterface {
 
     if (handler_restarter &&
         handler_restarter->StartRestartThread(
-            handler, database, metrics_dir, url, annotations, arguments)) {
+            handler, database, metrics_dir, url, annotations, arguments, attachments)) {
       // The thread owns the object now.
       ignore_result(handler_restarter.release());
     }
@@ -206,6 +208,7 @@ class HandlerStarter final : public NotifyServer::DefaultInterface {
                 url_,
                 annotations_,
                 arguments_,
+                attachments_,
                 base::mac::ScopedMachReceiveRight(rights),
                 this,
                 true);
@@ -222,6 +225,7 @@ class HandlerStarter final : public NotifyServer::DefaultInterface {
         url_(),
         annotations_(),
         arguments_(),
+        attachments_(),
         notify_port_(NewMachPort(MACH_PORT_RIGHT_RECEIVE)),
         last_start_time_(0) {
   }
@@ -251,6 +255,7 @@ class HandlerStarter final : public NotifyServer::DefaultInterface {
                           const std::string& url,
                           const std::map<std::string, std::string>& annotations,
                           const std::vector<std::string>& arguments,
+                          const std::vector<base::FilePath>& attachments,
                           base::mac::ScopedMachReceiveRight receive_right,
                           HandlerStarter* handler_restarter,
                           bool restart) {
@@ -331,6 +336,11 @@ class HandlerStarter final : public NotifyServer::DefaultInterface {
       argv.push_back(
           FormatArgumentString("annotation", kv.first + '=' + kv.second));
     }
+
+    for (const auto& attachment : attachments) {
+      argv.push_back(FormatArgumentString("attachment", attachment.value()));
+    }
+
     argv.push_back(FormatArgumentInt("handshake-fd", server_write_fd.get()));
 
     // When restarting, reset the system default crash handler first. Otherwise,
@@ -366,13 +376,15 @@ class HandlerStarter final : public NotifyServer::DefaultInterface {
                           const base::FilePath& metrics_dir,
                           const std::string& url,
                           const std::map<std::string, std::string>& annotations,
-                          const std::vector<std::string>& arguments) {
+                          const std::vector<std::string>& arguments,
+                          const std::vector<base::FilePath>& attachments) {
     handler_ = handler;
     database_ = database;
     metrics_dir_ = metrics_dir;
     url_ = url;
     annotations_ = annotations;
     arguments_ = arguments;
+    attachments_ = attachments;
 
     pthread_attr_t pthread_attr;
     errno = pthread_attr_init(&pthread_attr);
@@ -425,6 +437,7 @@ class HandlerStarter final : public NotifyServer::DefaultInterface {
   std::string url_;
   std::map<std::string, std::string> annotations_;
   std::vector<std::string> arguments_;
+  std::vector<base::FilePath> attachments_;
   base::mac::ScopedMachReceiveRight notify_port_;
   uint64_t last_start_time_;
 
@@ -449,9 +462,6 @@ bool CrashpadClient::StartHandler(
     bool restartable,
     bool asynchronous_start,
     const std::vector<base::FilePath>& attachments) {
-  // Attachments are not implemented on MacOS yet.
-  DCHECK(attachments.empty());
-
   // The “restartable” behavior can only be selected on OS X 10.10 and later. In
   // previous OS versions, if the initial client were to crash while attempting
   // to restart the handler, it would become an unkillable process.
@@ -462,6 +472,7 @@ bool CrashpadClient::StartHandler(
       url,
       annotations,
       arguments,
+      attachments,
       restartable && (__MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_10_10 ||
                       MacOSVersionNumber() >= 10'10'00)));
   if (!exception_port.is_valid()) {
