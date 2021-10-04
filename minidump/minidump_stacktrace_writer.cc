@@ -110,32 +110,38 @@ bool MinidumpStacktraceListWriter::WriteObject(
   iov.iov_base = &padding;
   iov.iov_len = align_to_8(iov.iov_len);
   if (iov.iov_len > 0) {
-      iovecs.push_back(iov);
+    iovecs.push_back(iov);
   }
 
-  iov.iov_base = &threads_.front();
-  iov.iov_len = threads_.size() * sizeof(internal::RawThread);
-  iovecs.push_back(iov);
+  if (!threads_.empty()) {
+    iov.iov_base = &threads_.front();
+    iov.iov_len = threads_.size() * sizeof(internal::RawThread);
+    iovecs.push_back(iov);
 
-  iov.iov_base = &padding;
-  iov.iov_len = align_to_8(iov.iov_len);
-  if (iov.iov_len > 0) {
+    iov.iov_base = &padding;
+    iov.iov_len = align_to_8(iov.iov_len);
+    if (iov.iov_len > 0) {
       iovecs.push_back(iov);
+    }
   }
 
-  iov.iov_base = &frames_.front();
-  iov.iov_len = frames_.size() * sizeof(internal::RawFrame);
-  iovecs.push_back(iov);
+  if (!frames_.empty()) {
+    iov.iov_base = &frames_.front();
+    iov.iov_len = frames_.size() * sizeof(internal::RawFrame);
+    iovecs.push_back(iov);
 
-  iov.iov_base = &padding;
-  iov.iov_len = align_to_8(iov.iov_len);
-  if (iov.iov_len > 0) {
+    iov.iov_base = &padding;
+    iov.iov_len = align_to_8(iov.iov_len);
+    if (iov.iov_len > 0) {
       iovecs.push_back(iov);
+    }
   }
 
-  iov.iov_base = &symbol_bytes_.front();
-  iov.iov_len = symbol_bytes_.size();
-  iovecs.push_back(iov);
+  if (!symbol_bytes_.empty()) {
+    iov.iov_base = &symbol_bytes_.front();
+    iov.iov_len = symbol_bytes_.size();
+    iovecs.push_back(iov);
+  }
 
   return file_writer->WriteIoVec(&iovecs);
 }

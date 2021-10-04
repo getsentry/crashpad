@@ -14,6 +14,7 @@
 
 #include "snapshot/win/process_reader_win.h"
 
+#include <dbghelp.h>
 #include <string.h>
 #include <winternl.h>
 
@@ -129,21 +130,51 @@ HANDLE OpenThread(
 // side-effect of returning the SuspendCount of the thread on success, so we
 // fill out these two pieces of semi-unrelated data in the same function.
 template <class Traits>
-bool FillThreadContextAndSuspendCount(HANDLE thread_handle,
+bool FillThreadContextAndSuspendCount(HANDLE process,
+                                      HANDLE thread_handle,
                                       ProcessReaderWin::Thread* thread,
                                       ProcessSuspensionState suspension_state,
                                       bool is_64_reading_32) {
   // Don't suspend the thread if it's this thread. This is really only for test
   // binaries, as we won't be walking ourselves, in general.
-  bool is_current_thread = thread->id ==
-                           reinterpret_cast<process_types::TEB<Traits>*>(
-                               NtCurrentTeb())->ClientId.UniqueThread;
+  bool is_current_thread =
+      thread->id ==
+      reinterpret_cast<process_types::TEB<Traits>*>(NtCurrentTeb())
+          ->ClientId.UniqueThread;
 
   if (is_current_thread) {
     DCHECK(suspension_state == ProcessSuspensionState::kRunning);
     thread->suspend_count = 0;
     DCHECK(!is_64_reading_32);
     CaptureContext(&thread->context.native);
+
+    int machine_type = IMAGE_FILE_MACHINE_AMD64;
+
+    const CONTEXT* ctx = &thread->context.native;
+    STACKFRAME64 stack_frame;
+    memset(&stack_frame, 0, sizeof(stack_frame));
+
+    stack_frame.AddrPC.Mode = AddrModeFlat;
+    stack_frame.AddrFrame.Mode = AddrModeFlat;
+    stack_frame.AddrStack.Mode = AddrModeFlat;
+    stack_frame.AddrPC.Offset = ctx->Rip;
+    stack_frame.AddrFrame.Offset = ctx->Rbp;
+    stack_frame.AddrStack.Offset = ctx->Rsp;
+
+    // TODO: ctx
+    while (StackWalk64(machine_type,
+                       process,
+                       thread_handle,
+                       &stack_frame,
+                       (void*)ctx,
+                       NULL,
+                       SymFunctionTableAccess64,
+                       SymGetModuleBase64,
+                       NULL)) {
+      FrameSnapshot frame(stack_frame.AddrPC.Offset, "");
+      thread->frames.push_back(frame);
+    }
+
   } else {
     DWORD previous_suspend_count = SuspendThread(thread_handle);
     if (previous_suspend_count == static_cast<DWORD>(-1)) {
@@ -183,6 +214,29 @@ bool FillThreadContextAndSuspendCount(HANDLE thread_handle,
       }
     }
 
+    int machine_type = IMAGE_FILE_MACHINE_AMD64;
+
+    STACKFRAME64 stack_frame;
+    memset(&stack_frame, 0, sizeof(stack_frame));
+
+    stack_frame.AddrPC.Mode = AddrModeFlat;
+    stack_frame.AddrFrame.Mode = AddrModeFlat;
+    stack_frame.AddrStack.Mode = AddrModeFlat;
+
+    // TODO: ctx
+    while (StackWalk64(machine_type,
+                       process,
+                       thread_handle,
+                       &stack_frame,
+                       &thread->context.native,
+                       NULL,
+                       SymFunctionTableAccess64,
+                       SymGetModuleBase64,
+                       NULL)) {
+      FrameSnapshot frame(stack_frame.AddrPC.Offset, "");
+      thread->frames.push_back(frame);
+    }
+
     if (!ResumeThread(thread_handle)) {
       PLOG(ERROR) << "ResumeThread";
       return false;
@@ -203,8 +257,7 @@ ProcessReaderWin::Thread::Thread()
       stack_region_size(0),
       suspend_count(0),
       priority_class(0),
-      priority(0) {
-}
+      priority(0) {}
 
 ProcessReaderWin::ProcessReaderWin()
     : process_(INVALID_HANDLE_VALUE),
@@ -214,11 +267,9 @@ ProcessReaderWin::ProcessReaderWin()
       modules_(),
       suspension_state_(),
       initialized_threads_(false),
-      initialized_() {
-}
+      initialized_() {}
 
-ProcessReaderWin::~ProcessReaderWin() {
-}
+ProcessReaderWin::~ProcessReaderWin() {}
 
 bool ProcessReaderWin::Initialize(HANDLE process,
                                   ProcessSuspensionState suspension_state) {
@@ -309,6 +360,10 @@ void ProcessReaderWin::ReadThreadData(bool is_64_reading_32) {
   if (!process_information)
     return;
 
+  // DWORD options = SymGetOptions();
+  // SymSetOptions(options | SYMOPT_UNDNAME);
+  SymInitialize(process_, NULL, TRUE);
+
   for (unsigned long i = 0; i < process_information->NumberOfThreads; ++i) {
     const process_types::SYSTEM_THREAD_INFORMATION<Traits>& thread_info =
         process_information->Threads[i];
@@ -319,7 +374,8 @@ void ProcessReaderWin::ReadThreadData(bool is_64_reading_32) {
     if (!thread_handle.is_valid())
       continue;
 
-    if (!FillThreadContextAndSuspendCount<Traits>(thread_handle.get(),
+    if (!FillThreadContextAndSuspendCount<Traits>(process_,
+                                                  thread_handle.get(),
                                                   &thread,
                                                   suspension_state_,
                                                   is_64_reading_32)) {
