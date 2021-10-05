@@ -63,36 +63,15 @@ bool ThreadSnapshotWin::Initialize(
     teb_.Initialize(process_reader->Memory(), 0, 0);
   }
 
-  int machine_type = IMAGE_FILE_MACHINE_I386;
-
-  const CONTEXT* ctx;
-  STACKFRAME64 stack_frame;
-  memset(&stack_frame, 0, sizeof(stack_frame));
-
-  stack_frame.AddrPC.Mode = AddrModeFlat;
-  stack_frame.AddrFrame.Mode = AddrModeFlat;
-  stack_frame.AddrStack.Mode = AddrModeFlat;
-
 #if defined(ARCH_CPU_X86)
   context_.architecture = kCPUArchitectureX86;
   context_.x86 = &context_union_.x86;
   InitializeX86Context(process_reader_thread.context.native, context_.x86);
-
-  ctx = &process_reader_thread.context.native;
-  stack_frame.AddrPC.Offset = ctx->Eip;
-  stack_frame.AddrFrame.Offset = ctx->Ebp;
-  stack_frame.AddrStack.Offset = ctx->Esp;
 #elif defined(ARCH_CPU_X86_64)
   if (process_reader->Is64Bit()) {
     context_.architecture = kCPUArchitectureX86_64;
     context_.x86_64 = &context_union_.x86_64;
     InitializeX64Context(process_reader_thread.context.native, context_.x86_64);
-
-    machine_type = IMAGE_FILE_MACHINE_AMD64;
-    ctx = &process_reader_thread.context.native;
-    stack_frame.AddrPC.Offset = ctx->Rip;
-    stack_frame.AddrFrame.Offset = ctx->Rbp;
-    stack_frame.AddrStack.Offset = ctx->Rsp;
   } else {
     context_.architecture = kCPUArchitectureX86;
     context_.x86 = &context_union_.x86;

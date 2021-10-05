@@ -126,6 +126,79 @@ HANDLE OpenThread(
   return handle;
 }
 
+void DoStackWalk(ProcessReaderWin::Thread* thread,
+                 HANDLE process,
+                 HANDLE thread_handle,
+                 bool is_64_reading_32) {
+  if (is_64_reading_32) {
+    // TODO: we dont support it right away, maybe in the future
+    return;
+  }
+
+  STACKFRAME64 stack_frame;
+  memset(&stack_frame, 0, sizeof(stack_frame));
+
+  stack_frame.AddrPC.Mode = AddrModeFlat;
+  stack_frame.AddrFrame.Mode = AddrModeFlat;
+  stack_frame.AddrStack.Mode = AddrModeFlat;
+
+  int machine_type = IMAGE_FILE_MACHINE_I386;
+  LPVOID ctx = NULL;
+#if defined(ARCH_CPU_X86)
+  const CONTEXT* ctx_ = &thread->context.native;
+  stack_frame.AddrPC.Offset = ctx_->Eip;
+  stack_frame.AddrFrame.Offset = ctx_->Ebp;
+  stack_frame.AddrStack.Offset = ctx_->Esp;
+  ctx = (LPVOID)ctx_;
+#elif defined(ARCH_CPU_X86_64)
+  // if (!is_64_reading_32) {
+  machine_type = IMAGE_FILE_MACHINE_AMD64;
+
+  const CONTEXT* ctx_ = &thread->context.native;
+  stack_frame.AddrPC.Offset = ctx_->Rip;
+  stack_frame.AddrFrame.Offset = ctx_->Rbp;
+  stack_frame.AddrStack.Offset = ctx_->Rsp;
+  ctx = (LPVOID)ctx_;
+  // } else {
+  //   const WOW64_CONTEXT* ctx_ = &thread->context.wow64;
+  //   stack_frame.AddrPC.Offset = ctx_->Eip;
+  //   stack_frame.AddrFrame.Offset = ctx_->Ebp;
+  //   stack_frame.AddrStack.Offset = ctx_->Esp;
+  //   ctx = (LPVOID)ctx_;
+  // }
+
+// TODO: we dont support this right away, maybe in the future
+//#elif defined(ARCH_CPU_ARM64)
+//  machine_type = IMAGE_FILE_MACHINE_ARM64;
+#else
+#error Unsupported Windows Arch
+#endif  // ARCH_CPU_X86
+
+  char buffer[sizeof(SYMBOL_INFO) + MAX_SYM_NAME];
+  PSYMBOL_INFO pSymbol = (PSYMBOL_INFO)buffer;
+
+  pSymbol->SizeOfStruct = sizeof(SYMBOL_INFO);
+  pSymbol->MaxNameLen = MAX_SYM_NAME;
+
+  while (StackWalk64(machine_type,
+                     process,
+                     thread_handle,
+                     &stack_frame,
+                     ctx,
+                     NULL,
+                     SymFunctionTableAccess64,
+                     SymGetModuleBase64,
+                     NULL)) {
+    uint64_t addr = stack_frame.AddrPC.Offset;
+    std::string sym("");
+    if (SymFromAddr(process, addr, 0, pSymbol)) {
+      sym = std::string(pSymbol->Name);
+    }
+    FrameSnapshot frame(addr, sym);
+    thread->frames.push_back(frame);
+  }
+}
+
 // It's necessary to suspend the thread to grab CONTEXT. SuspendThread has a
 // side-effect of returning the SuspendCount of the thread on success, so we
 // fill out these two pieces of semi-unrelated data in the same function.
@@ -148,33 +221,7 @@ bool FillThreadContextAndSuspendCount(HANDLE process,
     DCHECK(!is_64_reading_32);
     CaptureContext(&thread->context.native);
 
-    int machine_type = IMAGE_FILE_MACHINE_AMD64;
-
-    const CONTEXT* ctx = &thread->context.native;
-    STACKFRAME64 stack_frame;
-    memset(&stack_frame, 0, sizeof(stack_frame));
-
-    stack_frame.AddrPC.Mode = AddrModeFlat;
-    stack_frame.AddrFrame.Mode = AddrModeFlat;
-    stack_frame.AddrStack.Mode = AddrModeFlat;
-    stack_frame.AddrPC.Offset = ctx->Rip;
-    stack_frame.AddrFrame.Offset = ctx->Rbp;
-    stack_frame.AddrStack.Offset = ctx->Rsp;
-
-    // TODO: ctx
-    while (StackWalk64(machine_type,
-                       process,
-                       thread_handle,
-                       &stack_frame,
-                       (void*)ctx,
-                       NULL,
-                       SymFunctionTableAccess64,
-                       SymGetModuleBase64,
-                       NULL)) {
-      FrameSnapshot frame(stack_frame.AddrPC.Offset, "");
-      thread->frames.push_back(frame);
-    }
-
+    DoStackWalk(thread, process, thread_handle, is_64_reading_32);
   } else {
     DWORD previous_suspend_count = SuspendThread(thread_handle);
     if (previous_suspend_count == static_cast<DWORD>(-1)) {
@@ -214,28 +261,7 @@ bool FillThreadContextAndSuspendCount(HANDLE process,
       }
     }
 
-    int machine_type = IMAGE_FILE_MACHINE_AMD64;
-
-    STACKFRAME64 stack_frame;
-    memset(&stack_frame, 0, sizeof(stack_frame));
-
-    stack_frame.AddrPC.Mode = AddrModeFlat;
-    stack_frame.AddrFrame.Mode = AddrModeFlat;
-    stack_frame.AddrStack.Mode = AddrModeFlat;
-
-    // TODO: ctx
-    while (StackWalk64(machine_type,
-                       process,
-                       thread_handle,
-                       &stack_frame,
-                       &thread->context.native,
-                       NULL,
-                       SymFunctionTableAccess64,
-                       SymGetModuleBase64,
-                       NULL)) {
-      FrameSnapshot frame(stack_frame.AddrPC.Offset, "");
-      thread->frames.push_back(frame);
-    }
+    DoStackWalk(thread, process, thread_handle, is_64_reading_32);
 
     if (!ResumeThread(thread_handle)) {
       PLOG(ERROR) << "ResumeThread";
@@ -360,8 +386,8 @@ void ProcessReaderWin::ReadThreadData(bool is_64_reading_32) {
   if (!process_information)
     return;
 
-  // DWORD options = SymGetOptions();
-  // SymSetOptions(options | SYMOPT_UNDNAME);
+  DWORD options = SymGetOptions();
+  SymSetOptions(options | SYMOPT_UNDNAME);
   SymInitialize(process_, NULL, TRUE);
 
   for (unsigned long i = 0; i < process_information->NumberOfThreads; ++i) {

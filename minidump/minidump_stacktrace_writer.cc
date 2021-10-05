@@ -7,6 +7,7 @@
 #include <utility>
 
 #include "base/logging.h"
+#include "snapshot/exception_snapshot.h"
 #include "snapshot/thread_snapshot.h"
 #include "util/file/file_writer.h"
 
@@ -32,7 +33,8 @@ MinidumpStacktraceListWriter::~MinidumpStacktraceListWriter() {}
 
 void MinidumpStacktraceListWriter::InitializeFromSnapshot(
     const std::vector<const ThreadSnapshot*>& thread_snapshots,
-    const MinidumpThreadIDMap& thread_id_map) {
+    const MinidumpThreadIDMap& thread_id_map,
+    const ExceptionSnapshot* exception_snapshot) {
   DCHECK_EQ(state(), kStateMutable);
 
   DCHECK(threads_.empty());
@@ -48,6 +50,20 @@ void MinidumpStacktraceListWriter::InitializeFromSnapshot(
     thread.start_frame = (uint32_t)frames_.size();
 
     std::vector<FrameSnapshot> frames = thread_snapshot->StackTrace();
+
+    // filter out the stack frames that are *above* the exception addr, as those
+    // are related to exception handling, and not really useful.
+    if (exception_snapshot &&
+        thread_snapshot->ThreadID() == exception_snapshot->ThreadID()) {
+      auto it = begin(frames);
+      for (; it != end(frames); it++)
+        if (it->InstructionAddr() == exception_snapshot->ExceptionAddress()) {
+          break;
+        }
+      if (it < end(frames)) {
+        frames.erase(begin(frames), it);
+      }
+    }
 
     for (auto frame_snapshot : frames) {
       internal::RawFrame frame;
