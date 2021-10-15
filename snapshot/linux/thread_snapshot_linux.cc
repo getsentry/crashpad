@@ -15,9 +15,12 @@
 #include "snapshot/linux/thread_snapshot_linux.h"
 
 #include <sched.h>
+
+#ifdef CLIENT_STACKTRACES_ENABLED
 #include <endian.h>
 #include <libunwind.h>
 #include <libunwind-ptrace.h>
+#endif
 
 #include "base/logging.h"
 #include "snapshot/linux/cpu_context_linux.h"
@@ -202,6 +205,7 @@ bool ThreadSnapshotLinux::Initialize(ProcessReaderLinux* process_reader,
 
   thread_id_ = thread.tid;
 
+#ifdef CLIENT_STACKTRACES_ENABLED
   void *upt = _UPT_create(thread_id_);
   if (upt) {
     unw_addr_space_t as = unw_create_addr_space(&_UPT_accessors, __LITTLE_ENDIAN);
@@ -227,6 +231,7 @@ bool ThreadSnapshotLinux::Initialize(ProcessReaderLinux* process_reader,
     unw_destroy_addr_space(as);
     _UPT_destroy(upt);
   }
+#endif
 
   priority_ =
       thread.have_priorities
