@@ -224,6 +224,14 @@ if(WIN32)
     endif()
 endif()
 
+if(LINUX)
+	#find_package(UNWIND-PTRACE REQUIRED)
+	#if(TARGET UNWIND-PTRACE::unwind-ptrace) # Only available in cmake 3.12+
+	#	target_link_libraries(crashpad_snapshot PRIVATE UNWIND-PTRACE::unwind-ptrace)
+	#else()
+    target_link_libraries(crashpad_snapshot PRIVATE unwind unwind-ptrace unwind-x86_64)
+endif()
+
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     target_compile_options(crashpad_snapshot PRIVATE
         "-Wno-multichar"

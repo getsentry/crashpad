@@ -15,6 +15,9 @@
 #include "snapshot/linux/thread_snapshot_linux.h"
 
 #include <sched.h>
+#include <endian.h>
+#include <libunwind.h>
+#include <libunwind-ptrace.h>
 
 #include "base/logging.h"
 #include "snapshot/linux/cpu_context_linux.h"
@@ -198,6 +201,32 @@ bool ThreadSnapshotLinux::Initialize(ProcessReaderLinux* process_reader,
       thread.thread_info.thread_specific_data_address;
 
   thread_id_ = thread.tid;
+
+  void *upt = _UPT_create(thread_id_);
+  if (upt) {
+    unw_addr_space_t as = unw_create_addr_space(&_UPT_accessors, __LITTLE_ENDIAN);
+    unw_cursor_t cursor;
+    if (unw_init_remote(&cursor, as, upt) == UNW_ESUCCESS) {
+     do {
+      unw_word_t addr;
+      unw_get_reg(&cursor, UNW_REG_IP, &addr);
+
+      std::string sym("");
+      char buf[1024];
+      unw_word_t symbol_offset;
+      if (unw_get_proc_name(&cursor, buf, sizeof(buf), &symbol_offset) ==
+          UNW_ESUCCESS) {
+        sym = std::string(buf);
+      }
+
+      FrameSnapshot frame(addr, sym);
+      frames_.push_back(frame);
+    } while (unw_step(&cursor) > 0);
+    }
+
+    unw_destroy_addr_space(as);
+    _UPT_destroy(upt);
+  }
 
   priority_ =
       thread.have_priorities
