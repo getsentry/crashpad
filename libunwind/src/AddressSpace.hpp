@@ -634,10 +634,10 @@ inline bool LocalAddressSpace::findFunctionName(pint_t addr, char *buf,
 struct found_mach_info {
   struct mach_header_64 header;
   struct segment_command_64 segment;
-  size_t ptr_after_segment;
-  size_t load_addr;
-  size_t slide;
-  size_t text_size;
+  uintptr_t ptr_after_segment;
+  uintptr_t load_addr;
+  uintptr_t slide;
+  uintptr_t text_size;
   bool header_valid;
   bool segment_valid;
 };
@@ -657,32 +657,32 @@ public:
   typedef uintptr_t pint_t;
   typedef intptr_t sint_t;
   uint8_t get8(pint_t addr) {
-    uint8_t val;
+    uint8_t val = 0;
     memcpy_from_remote(&val, (void *)addr, sizeof(val));
     return val;
   }
   uint16_t get16(pint_t addr) {
-    uint16_t val;
+    uint16_t val = 0;
     memcpy_from_remote(&val, (void *)addr, sizeof(val));
     return val;
   }
   uint32_t get32(pint_t addr) {
-    uint32_t val;
+    uint32_t val = 0;
     memcpy_from_remote(&val, (void *)addr, sizeof(val));
     return val;
   }
   uint64_t get64(pint_t addr) {
-    uint64_t val;
+    uint64_t val = 0;
     memcpy_from_remote(&val, (void *)addr, sizeof(val));
     return val;
   }
   double getDouble(pint_t addr) {
-    double val;
+    double val = 0;
     memcpy_from_remote(&val, (void *)addr, sizeof(val));
     return val;
   }
   v128 getVector(pint_t addr) {
-    v128 val;
+    v128 val = {0};
     memcpy_from_remote(&val, (void *)addr, sizeof(val));
     return val;
   }
@@ -721,7 +721,7 @@ private:
 
 uint64_t RemoteAddressSpace::getULEB128(pint_t &addr, pint_t end) {
   uintptr_t size = (end - addr);
-  char buf[16];
+  char buf[16] = {0};
   memcpy_from_remote(buf, (void *)addr, 16);
   LocalAddressSpace::pint_t laddr = (LocalAddressSpace::pint_t)buf;
   LocalAddressSpace::pint_t sladdr = laddr;
@@ -732,7 +732,7 @@ uint64_t RemoteAddressSpace::getULEB128(pint_t &addr, pint_t end) {
 
 int64_t RemoteAddressSpace::getSLEB128(pint_t &addr, pint_t end) {
   uintptr_t size = (end - addr);
-  char buf[16];
+  char buf[16] = {0};
   memcpy_from_remote(buf, (void *)addr, 16);
   LocalAddressSpace::pint_t laddr =
       (LocalAddressSpace::pint_t)buf;
@@ -945,7 +945,7 @@ bool RemoteAddressSpace::findMachSegmentInImage(pint_t targetAddr, const char*se
         last_found_image.text_size = seg.vmsize;
         found_text = true;
       }
-      if (strcmp(seg.segname, segment) == 0) {
+      if (strncmp(seg.segname, segment, 16) == 0) {
         pint_t sect_ptr = cmd_ptr + sizeof(struct segment_command_64);
         last_found_image.segment_valid = true;
         last_found_image.segment = seg;
@@ -968,6 +968,8 @@ inline bool RemoteAddressSpace::findUnwindSections(pint_t targetAddr,
   }
 
   info.dso_base = last_found_image.load_addr;
+  info.dwarf_section = 0;
+  info.compact_unwind_section = 0;
 
   for (size_t s = 0; s < last_found_image.segment.nsects; s++) {
     struct section_64 sect;
@@ -1021,8 +1023,8 @@ bool RemoteAddressSpace::findFunctionName(pint_t addr, char *buf,
         return false;
       };
 
-      size_t strtab = last_found_image.load_addr + seg.stroff;
-      size_t nearest_sym = 0;
+      pint_t strtab = last_found_image.load_addr + seg.stroff;
+      pint_t nearest_sym = 0;
       for (size_t s = 0; s < seg.nsyms; s++) {
         struct nlist_64 nlist;
         if (memcpy_from_remote(&nlist,
@@ -1038,10 +1040,10 @@ bool RemoteAddressSpace::findFunctionName(pint_t addr, char *buf,
           continue;
         }
 
-        size_t sym_addr = nlist.n_value + last_found_image.slide;
+        pint_t sym_addr = nlist.n_value + last_found_image.slide;
         if (sym_addr > nearest_sym && sym_addr < addr) {
-          size_t symbol_start = strtab + nlist.n_un.n_strx;
-          size_t bytes_to_copy = strtab + seg.strsize - symbol_start;
+          pint_t symbol_start = strtab + nlist.n_un.n_strx;
+          pint_t bytes_to_copy = strtab + seg.strsize - symbol_start;
           if (bytes_to_copy > bufLen) {
             bytes_to_copy = bufLen;
           }
