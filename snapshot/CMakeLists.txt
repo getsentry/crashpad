@@ -224,12 +224,10 @@ if(WIN32)
     endif()
 endif()
 
-if(LINUX)
-	#find_package(UNWIND-PTRACE REQUIRED)
-	#if(TARGET UNWIND-PTRACE::unwind-ptrace) # Only available in cmake 3.12+
-	#	target_link_libraries(crashpad_snapshot PRIVATE UNWIND-PTRACE::unwind-ptrace)
-	#else()
-    target_link_libraries(crashpad_snapshot PRIVATE unwind unwind-ptrace unwind-x86_64)
+if(LINUX AND CRASHPAD_ENABLE_STACKTRACE)
+	find_package(PkgConfig REQUIRED)
+	pkg_check_modules(UNWIND REQUIRED IMPORTED_TARGET libunwind-ptrace)
+	target_link_libraries(crashpad_snapshot PRIVATE PkgConfig::UNWIND)
 endif()
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
