@@ -121,7 +121,7 @@ add_subdirectory(third_party/getopt)
 add_subdirectory(tools)
 add_subdirectory(handler)
 
-if(CRASHPAD_ENABLE_STACKTRACE AND APPLE)
+if(CRASHPAD_ENABLE_STACKTRACE AND APPLE AND NOT IOS)
     set(LIBUNWIND_ENABLE_SHARED OFF)
     add_subdirectory(libunwind)
 endif()
