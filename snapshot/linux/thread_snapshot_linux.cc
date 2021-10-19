@@ -18,8 +18,8 @@
 
 #ifdef CLIENT_STACKTRACES_ENABLED
 #include <endian.h>
-#include <libunwind.h>
 #include <libunwind-ptrace.h>
+#include <libunwind.h>
 #endif
 
 #include "base/logging.h"
@@ -206,9 +206,10 @@ bool ThreadSnapshotLinux::Initialize(ProcessReaderLinux* process_reader,
   thread_id_ = thread.tid;
 
 #ifdef CLIENT_STACKTRACES_ENABLED
-  void *upt = _UPT_create(thread_id_);
+  void* upt = _UPT_create(thread_id_);
   if (upt) {
-    unw_addr_space_t as = unw_create_addr_space(&_UPT_accessors, __LITTLE_ENDIAN);
+    unw_addr_space_t as =
+        unw_create_addr_space(&_UPT_accessors, __LITTLE_ENDIAN);
     unw_cursor_t cursor;
     if (unw_init_remote(&cursor, as, upt) == UNW_ESUCCESS) {
       do {
@@ -281,16 +282,16 @@ std::vector<const MemorySnapshot*> ThreadSnapshotLinux::ExtraMemory() const {
 
 #ifdef CLIENT_STACKTRACES_ENABLED
 void ThreadSnapshotLinux::TrimStackTrace(uint64_t exception_address) {
-    auto start_frame = begin(frames_);
-    for (; start_frame != end(frames_); start_frame++) {
-      // These two addresses are never equivalent to each other 
-      if (start_frame->InstructionAddr() == exception_address) {
-        break;
-      }
+  auto start_frame = begin(frames_);
+  for (; start_frame != end(frames_); start_frame++) {
+    // These two addresses are never equivalent to each other
+    if (start_frame->InstructionAddr() == exception_address) {
+      break;
     }
-    if (start_frame < end(frames_)) {
-      frames_.erase(begin(frames_), start_frame);
-    }
+  }
+  if (start_frame < end(frames_)) {
+    frames_.erase(begin(frames_), start_frame);
+  }
 }
 #endif
 

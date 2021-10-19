@@ -104,9 +104,10 @@ bool ProcessSnapshotLinux::InitializeException(
         return false;
       }
 
-      #ifdef CLIENT_STACKTRACES_ENABLED
-      exc_thread_snapshot->TrimStackTrace(exception_->ExceptionAddress());
-      #endif
+#ifdef CLIENT_STACKTRACES_ENABLED
+      exc_thread_snapshot->TrimStackTrace(
+          exception_->Context()->InstructionPointer());
+#endif
 
       for (auto& thread_snapshot : threads_) {
         if (thread_snapshot->ThreadID() ==
