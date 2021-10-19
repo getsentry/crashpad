@@ -211,21 +211,23 @@ bool ThreadSnapshotLinux::Initialize(ProcessReaderLinux* process_reader,
     unw_addr_space_t as = unw_create_addr_space(&_UPT_accessors, __LITTLE_ENDIAN);
     unw_cursor_t cursor;
     if (unw_init_remote(&cursor, as, upt) == UNW_ESUCCESS) {
-     do {
-      unw_word_t addr;
-      unw_get_reg(&cursor, UNW_REG_IP, &addr);
+      do {
+        unw_word_t addr;
+        if (unw_get_reg(&cursor, UNW_REG_IP, &addr) < 0) {
+          return false;
+        }
 
-      std::string sym("");
-      char buf[1024];
-      unw_word_t symbol_offset;
-      if (unw_get_proc_name(&cursor, buf, sizeof(buf), &symbol_offset) ==
-          UNW_ESUCCESS) {
-        sym = std::string(buf);
-      }
+        std::string sym("");
+        char buf[1024];
+        unw_word_t symbol_offset;
+        if (unw_get_proc_name(&cursor, buf, sizeof(buf), &symbol_offset) ==
+            UNW_ESUCCESS) {
+          sym = std::string(buf);
+        }
 
-      FrameSnapshot frame(addr, sym);
-      frames_.push_back(frame);
-    } while (unw_step(&cursor) > 0);
+        FrameSnapshot frame(addr, sym);
+        frames_.push_back(frame);
+      } while (unw_step(&cursor) > 0);
     }
 
     unw_destroy_addr_space(as);
