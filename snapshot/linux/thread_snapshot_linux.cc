@@ -279,5 +279,20 @@ std::vector<const MemorySnapshot*> ThreadSnapshotLinux::ExtraMemory() const {
   return std::vector<const MemorySnapshot*>();
 }
 
+#ifdef CLIENT_STACKTRACES_ENABLED
+void ThreadSnapshotLinux::TrimStackTrace(uint64_t exception_address) {
+    auto start_frame = begin(frames_);
+    for (; start_frame != end(frames_); start_frame++) {
+      // These two addresses are never equivalent to each other 
+      if (start_frame->InstructionAddr() == exception_address) {
+        break;
+      }
+    }
+    if (start_frame < end(frames_)) {
+      frames_.erase(begin(frames_), start_frame);
+    }
+}
+#endif
+
 }  // namespace internal
 }  // namespace crashpad
