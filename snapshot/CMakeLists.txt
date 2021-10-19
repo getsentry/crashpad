@@ -224,7 +224,7 @@ if(WIN32)
 endif()
 
 if(APPLE AND NOT IOS AND CRASHPAD_ENABLE_STACKTRACE)
-    target_include_directories(crashpad_snapshot SYSTEM BEFORE PRIVATE ../libunwind/include)
+    target_include_directories(crashpad_snapshot PRIVATE ../libunwind/include)
     target_link_libraries(crashpad_snapshot PRIVATE unwind_static)
 endif()
 

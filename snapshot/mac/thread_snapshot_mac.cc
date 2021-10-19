@@ -18,7 +18,9 @@
 #include "snapshot/mac/cpu_context_mac.h"
 #include "snapshot/mac/process_reader_mac.h"
 
+#ifdef CLIENT_STACKTRACES_ENABLED
 #include <libunwind.h>
+#endif
 
 namespace crashpad {
 namespace internal {
@@ -89,6 +91,7 @@ bool ThreadSnapshotMac::Initialize(
 #error Port to your CPU architecture
 #endif
 
+#ifdef CLIENT_STACKTRACES_ENABLED
   unw_addr_space_t as = unw_create_addr_space_for_task(process_reader->task_);
   unw_cursor_t cursor;
 
@@ -115,6 +118,7 @@ bool ThreadSnapshotMac::Initialize(
   }
 
   unw_destroy_addr_space(as);
+#endif
 
   INITIALIZATION_STATE_SET_VALID(initialized_);
   return true;
