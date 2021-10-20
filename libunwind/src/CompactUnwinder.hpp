@@ -529,6 +529,8 @@ public:
 private:
   typename A::pint_t pint_t;
 
+  static int stepSpeculatively(
+    A &addressSpace, Registers_arm64 &registers);
   static int
       stepWithCompactEncodingFrame(compact_unwind_encoding_t compactEncoding,
                                    uint64_t functionStart, A &addressSpace,
@@ -543,6 +545,8 @@ int CompactUnwinder_arm64<A>::stepWithCompactEncoding(
     compact_unwind_encoding_t compactEncoding, uint64_t functionStart,
     A &addressSpace, Registers_arm64 &registers) {
   switch (compactEncoding & UNWIND_ARM64_MODE_MASK) {
+  case 0:
+    return stepSpeculatively(addressSpace, registers);
   case UNWIND_ARM64_MODE_FRAME:
     return stepWithCompactEncodingFrame(compactEncoding, functionStart,
                                         addressSpace, registers);
@@ -551,6 +555,20 @@ int CompactUnwinder_arm64<A>::stepWithCompactEncoding(
                                             addressSpace, registers);
   }
   _LIBUNWIND_ABORT("invalid compact unwind encoding");
+}
+
+template <typename A>
+int CompactUnwinder_arm64<A>::stepSpeculatively(
+    A &addressSpace, Registers_arm64 &registers) {
+  uint64_t fp = registers.getFP();
+  // fp points to old fp
+  registers.setFP(addressSpace.get64(fp));
+  // old sp is fp less saved fp and lr
+  registers.setSP(fp + 16);
+  // pop return address into pc
+  registers.setIP(addressSpace.get64(fp + 8));
+
+  return UNW_STEP_SUCCESS;
 }
 
 template <typename A>

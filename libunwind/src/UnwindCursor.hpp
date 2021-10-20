@@ -1620,7 +1620,7 @@ bool UnwindCursor<A, R>::getInfoFromDwarfSection(pint_t pc,
 template <typename A, typename R>
 bool UnwindCursor<A, R>::getInfoFromCompactEncodingSection(pint_t pc,
                                               const UnwindInfoSections &sects) {
-  const bool log = false;
+  const bool log = true;
   if (log)
     fprintf(stderr, "getInfoFromCompactEncodingSection(pc=0x%llX, mh=0x%llX)\n",
             (uint64_t)pc, (uint64_t)sects.dso_base);
@@ -1970,10 +1970,10 @@ void UnwindCursor<A, R>::setInfoBasedOnIPRegister(bool isReturnAddress) {
   #endif
         // If unwind table has entry, but entry says there is no unwind info,
         // record that we have no unwind info.
-#ifndef _LIBUNWIND_TARGET_X86_64
-        if (_info.format == 0)
-          _unwindInfoMissing = true;
-#endif
+// #ifndef _LIBUNWIND_TARGET_X86_64
+//         if (_info.format == 0)
+//           _unwindInfoMissing = true;
+// #endif
         return;
       }
     }
