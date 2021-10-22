@@ -571,9 +571,10 @@ int CompactUnwinder_arm64<A>::stepSpeculatively(
   // https://github.com/getsentry/breakpad/blob/master/src/processor/stackwalker_arm64.cc#L208-L252
   uint64_t last_fp = registers.getFP();
   uint64_t caller_fp = 0;
-  uint64_t caller_lp = 0;
   uint64_t caller_lr = 0;
   uint64_t caller_sp = registers.getSP();
+
+  uint64_t fp = strip_ptr_auth(registers.getFP());
 
   if (last_fp) {
     // fp points to old fp
@@ -581,8 +582,7 @@ int CompactUnwinder_arm64<A>::stepSpeculatively(
     // old sp is fp less saved fp and lr
     caller_sp = fp + 16;
     // pop return address into pc
-    caller_lr = addressSpace.get64(fp + 8);
-    caller_lr = strip_ptr_auth(caller_lr);
+    caller_lr = strip_ptr_auth(addressSpace.get64(fp + 8));
   }
 
   // XXX: breakpad sets the IP from the LR, which is only correct if we do
@@ -597,8 +597,7 @@ int CompactUnwinder_arm64<A>::stepSpeculatively(
   // middle of the stack trace. We are lucky though, as it is mostly the top
   // frames which are missing unwind info (they are what appears to be syscall
   // wrappers mostly).
-  uint64_t lr = registers.getRegister(UNW_AARCH64_LR);
-  lr = strip_ptr_auth(lr);
+  uint64_t lr = strip_ptr_auth(registers.getRegister(UNW_AARCH64_LR));
 
   registers.setFP(caller_fp);
   registers.setSP(caller_sp);
@@ -685,9 +684,7 @@ int CompactUnwinder_arm64<A>::stepWithCompactEncodingFrameless(
   registers.setSP(savedRegisterLoc);
 
   // set pc to be value in lr
-  uint64_t lr = registers.getRegister(UNW_AARCH64_LR);
-  lr = strip_ptr_auth(lr);
-  registers.setIP(lr);
+  registers.setIP(strip_ptr_auth(registers.getRegister(UNW_AARCH64_LR)));
 
   return UNW_STEP_SUCCESS;
 }
@@ -768,9 +765,7 @@ int CompactUnwinder_arm64<A>::stepWithCompactEncodingFrame(
   // old sp is fp less saved fp and lr
   registers.setSP(fp + 16);
   // pop return address into pc
-  uint64_t lr = addressSpace.get64(fp + 8);
-  lr = strip_ptr_auth(lr);
-  registers.setIP(lr);
+  registers.setIP(strip_ptr_auth(addressSpace.get64(fp + 8)));
 
   return UNW_STEP_SUCCESS;
 }
