@@ -516,6 +516,13 @@ void CompactUnwinder_x86_64<A>::framelessUnwind(A &addressSpace,
 
 
 #if defined(_LIBUNWIND_TARGET_AARCH64)
+uint64_t strip_ptr_auth(uint64_t pointer) {
+  // mask is taken from:
+  // https://github.com/dotnet/runtime/pull/40435/files/af4db134ddd9deea10e75d3f732cc35d3b61119e#r479544995
+  uint64_t mask = 0x7fffffffffffull;
+  return pointer & mask;
+}
+
 /// CompactUnwinder_arm64 uses a compact unwind info to virtually "step" (aka
 /// unwind) by modifying a Registers_arm64 register set
 template <typename A>
@@ -560,13 +567,43 @@ int CompactUnwinder_arm64<A>::stepWithCompactEncoding(
 template <typename A>
 int CompactUnwinder_arm64<A>::stepSpeculatively(
     A &addressSpace, Registers_arm64 &registers) {
-  uint64_t fp = registers.getFP();
-  // fp points to old fp
-  registers.setFP(addressSpace.get64(fp));
-  // old sp is fp less saved fp and lr
-  registers.setSP(fp + 16);
-  // pop return address into pc
-  registers.setIP(addressSpace.get64(fp + 8));
+  // this is a recreation of:
+  // https://github.com/getsentry/breakpad/blob/master/src/processor/stackwalker_arm64.cc#L208-L252
+  uint64_t last_fp = registers.getFP();
+  uint64_t caller_fp = 0;
+  uint64_t caller_lp = 0;
+  uint64_t caller_lr = 0;
+  uint64_t caller_sp = registers.getSP();
+
+  if (last_fp) {
+    // fp points to old fp
+    caller_fp = addressSpace.get64(fp);
+    // old sp is fp less saved fp and lr
+    caller_sp = fp + 16;
+    // pop return address into pc
+    caller_lr = addressSpace.get64(fp + 8);
+    caller_lr = strip_ptr_auth(caller_lr);
+  }
+
+  // XXX: breakpad sets the IP from the LR, which is only correct if we do
+  // framepointer unwinding all the way (we read/set the LR below).
+  // However, compact unwinding code never actually restores the LR, so we might
+  // have some bogus values in this case. We could do that at the bottom of
+  // `stepWithCompactEncodingFrame` but that wouldn't really solve the problem,
+  // as that is also a duplicated/bogus LR then.
+  // Long story short, what this means is, that we use the LR (correctly) when
+  // we are missing compact unwind info on the *top* of the trace, however we
+  // will likely have incorrect results when we try `stepSpeculatively` in the
+  // middle of the stack trace. We are lucky though, as it is mostly the top
+  // frames which are missing unwind info (they are what appears to be syscall
+  // wrappers mostly).
+  uint64_t lr = registers.getRegister(UNW_AARCH64_LR);
+  lr = strip_ptr_auth(lr);
+
+  registers.setFP(caller_fp);
+  registers.setSP(caller_sp);
+  registers.setIP(lr);
+  registers.setRegister(UNW_AARCH64_LR, caller_lr);
 
   return UNW_STEP_SUCCESS;
 }
@@ -648,7 +685,9 @@ int CompactUnwinder_arm64<A>::stepWithCompactEncodingFrameless(
   registers.setSP(savedRegisterLoc);
 
   // set pc to be value in lr
-  registers.setIP(registers.getRegister(UNW_AARCH64_LR));
+  uint64_t lr = registers.getRegister(UNW_AARCH64_LR);
+  lr = strip_ptr_auth(lr);
+  registers.setIP(lr);
 
   return UNW_STEP_SUCCESS;
 }
@@ -729,7 +768,9 @@ int CompactUnwinder_arm64<A>::stepWithCompactEncodingFrame(
   // old sp is fp less saved fp and lr
   registers.setSP(fp + 16);
   // pop return address into pc
-  registers.setIP(addressSpace.get64(fp + 8));
+  uint64_t lr = addressSpace.get64(fp + 8);
+  lr = strip_ptr_auth(lr);
+  registers.setIP(lr);
 
   return UNW_STEP_SUCCESS;
 }
