@@ -553,13 +553,19 @@ int CompactUnwinder_arm64<A>::stepWithCompactEncoding(
     A &addressSpace, Registers_arm64 &registers) {
   switch (compactEncoding & UNWIND_ARM64_MODE_MASK) {
   case 0:
-    return stepSpeculatively(addressSpace, registers);
+    int result = stepSpeculatively(addressSpace, registers);
+    registers.setRegister(UNW_AARCH64_LR, 0);
+    return result;
   case UNWIND_ARM64_MODE_FRAME:
-    return stepWithCompactEncodingFrame(compactEncoding, functionStart,
-                                        addressSpace, registers);
+    int result = stepWithCompactEncodingFrame(compactEncoding, functionStart,
+                                              addressSpace, registers);
+    registers.setRegister(UNW_AARCH64_LR, 0);
+    return result;
   case UNWIND_ARM64_MODE_FRAMELESS:
-    return stepWithCompactEncodingFrameless(compactEncoding, functionStart,
-                                            addressSpace, registers);
+    int result = stepWithCompactEncodingFrameless(compactEncoding, functionStart,
+                                                  addressSpace, registers);
+    registers.setRegister(UNW_AARCH64_LR, 0);
+    return result;
   }
   _LIBUNWIND_ABORT("invalid compact unwind encoding");
 }
@@ -567,46 +573,49 @@ int CompactUnwinder_arm64<A>::stepWithCompactEncoding(
 template <typename A>
 int CompactUnwinder_arm64<A>::stepSpeculatively(
     A &addressSpace, Registers_arm64 &registers) {
-  // this is a recreation of:
-  // https://github.com/getsentry/breakpad/blob/master/src/processor/stackwalker_arm64.cc#L208-L252
-  uint64_t last_fp = registers.getFP();
-  uint64_t caller_fp = 0;
-  uint64_t caller_lr = 0;
-  uint64_t caller_sp = registers.getSP();
-
-  uint64_t fp = strip_ptr_auth(registers.getFP());
-
-  if (last_fp) {
-    // fp points to old fp
-    caller_fp = addressSpace.get64(fp);
-    // old sp is fp less saved fp and lr
-    caller_sp = fp + 16;
-    // pop return address into pc
-    caller_lr = strip_ptr_auth(addressSpace.get64(fp + 8));
-  }
-
   // XXX: breakpad sets the IP from the LR, which is only correct if we do
-  // framepointer unwinding all the way (we read/set the LR below).
-  // However, compact unwinding code never actually restores the LR, so we might
-  // have some bogus values in this case. We could do that at the bottom of
-  // `stepWithCompactEncodingFrame` but that wouldn't really solve the problem,
-  // as that is also a duplicated/bogus LR then.
-  // Long story short, what this means is, that we use the LR (correctly) when
-  // we are missing compact unwind info on the *top* of the trace, however we
-  // will likely have incorrect results when we try `stepSpeculatively` in the
-  // middle of the stack trace. We are lucky though, as it is mostly the top
-  // frames which are missing unwind info (they are what appears to be syscall
-  // wrappers mostly).
+  // framepointer unwinding all the way.
+  // However, compact unwinding code never actually restores the LR, so we
+  // might have some bogus values in this case. We could do that at the bottom
+  // of `stepWithCompactEncodingFrame` but that wouldn't really solve the
+  // problem, as that is also a duplicated/bogus LR then. Long story short,
+  // what this means is, that we use the LR (correctly) when we are missing
+  // compact unwind info for the *first* frame. We are lucky though, as it
+  // is mostly the top frames which are missing unwind info
+  // (they are what appears to be syscall wrappers mostly).
+  // To overcome this, we use the LR only if we are at the first frame.
+  // (we reset it to 0 after a `step` call)
+  // All other frames use frame-pointer based unwinding, fetching the return
+  // address from the stack.
+
   uint64_t lr = strip_ptr_auth(registers.getRegister(UNW_AARCH64_LR));
 
-  registers.setFP(caller_fp);
-  registers.setSP(caller_sp);
-  registers.setIP(lr);
-  registers.setRegister(UNW_AARCH64_LR, caller_lr);
+  if (lr) {
+    registers.setIP(lr);
+  } else {
+    // this is a recreation of:
+    // https://github.com/getsentry/breakpad/blob/master/src/processor/stackwalker_arm64.cc#L208-L252
+    uint64_t last_fp = registers.getFP();
+    uint64_t caller_fp = 0;
+    uint64_t caller_lr = 0;
+    uint64_t caller_sp = registers.getSP();
 
+    if (last_fp) {
+      // fp points to old fp
+      caller_fp = addressSpace.get64(last_fp);
+      // old sp is fp less saved fp and lr
+      caller_sp = last_fp + 16;
+      // pop return address into pc
+      caller_lr = strip_ptr_auth(addressSpace.get64(last_fp + 8));
+    }
+
+    registers.setFP(caller_fp);
+    registers.setSP(caller_sp);
+    registers.setIP(caller_lr);
+  }
   return UNW_STEP_SUCCESS;
 }
-
+x
 template <typename A>
 int CompactUnwinder_arm64<A>::stepWithCompactEncodingFrameless(
     compact_unwind_encoding_t encoding, uint64_t, A &addressSpace,
