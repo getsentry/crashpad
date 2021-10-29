@@ -1620,7 +1620,7 @@ bool UnwindCursor<A, R>::getInfoFromDwarfSection(pint_t pc,
 template <typename A, typename R>
 bool UnwindCursor<A, R>::getInfoFromCompactEncodingSection(pint_t pc,
                                               const UnwindInfoSections &sects) {
-  const bool log = true;
+  const bool log = false;
   if (log)
     fprintf(stderr, "getInfoFromCompactEncodingSection(pc=0x%llX, mh=0x%llX)\n",
             (uint64_t)pc, (uint64_t)sects.dso_base);
