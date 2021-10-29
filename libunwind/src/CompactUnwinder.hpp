@@ -551,19 +551,20 @@ template <typename A>
 int CompactUnwinder_arm64<A>::stepWithCompactEncoding(
     compact_unwind_encoding_t compactEncoding, uint64_t functionStart,
     A &addressSpace, Registers_arm64 &registers) {
+  int result = 0;
   switch (compactEncoding & UNWIND_ARM64_MODE_MASK) {
   case 0:
-    int result = stepSpeculatively(addressSpace, registers);
+    result = stepSpeculatively(addressSpace, registers);
     registers.setRegister(UNW_AARCH64_LR, 0);
     return result;
   case UNWIND_ARM64_MODE_FRAME:
-    int result = stepWithCompactEncodingFrame(compactEncoding, functionStart,
-                                              addressSpace, registers);
+    result = stepWithCompactEncodingFrame(compactEncoding, functionStart,
+                                          addressSpace, registers);
     registers.setRegister(UNW_AARCH64_LR, 0);
     return result;
   case UNWIND_ARM64_MODE_FRAMELESS:
-    int result = stepWithCompactEncodingFrameless(compactEncoding, functionStart,
-                                                  addressSpace, registers);
+    result = stepWithCompactEncodingFrameless(compactEncoding, functionStart,
+                                              addressSpace, registers);
     registers.setRegister(UNW_AARCH64_LR, 0);
     return result;
   }
@@ -615,7 +616,7 @@ int CompactUnwinder_arm64<A>::stepSpeculatively(
   }
   return UNW_STEP_SUCCESS;
 }
-x
+
 template <typename A>
 int CompactUnwinder_arm64<A>::stepWithCompactEncodingFrameless(
     compact_unwind_encoding_t encoding, uint64_t, A &addressSpace,
