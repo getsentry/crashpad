@@ -385,8 +385,8 @@ if(WIN32)
         win/traits.h
         win/xp_compat.h
     )
-    message(STATUS "Targeting processor architecture: ${CMAKE_SYSTEM_PROCESSOR}") 
-    if(${CMAKE_SYSTEM_PROCESSOR} MATCHES "arm|ARM64")
+    message(STATUS "Targeting processor architecture: ${CMAKE_GENERATOR_PLATFORM}") 
+    if(${CMAKE_GENERATOR_PLATFORM} MATCHES "arm|ARM64")
         message(STATUS "Adding misc/capture_context_win_arm64.asm to util sources") 
 
         target_sources(crashpad_util PRIVATE
