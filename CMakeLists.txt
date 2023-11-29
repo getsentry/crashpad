@@ -51,6 +51,7 @@ endfunction()
 
 if(WIN32)
     if(CMAKE_SYSTEM_PROCESSOR MATCHES ARM64)
+        message(STATUS "Targetting ARM64 on Windows: using Microsoft ARM Assembler...")
         enable_language(ASM_MARMASM)
     else()
         enable_language(ASM_MASM)
