@@ -29,6 +29,12 @@ jobs:
           cmake -B cmake-build -D CRASHPAD_BUILD_TOOLS=On
           cmake --build cmake-build --parallel
 
+      - name: Build crashpad Windows ARM64
+        if: ${{ runner.os == 'Windows' }}
+        run: |
+          cmake -B cmake-build -A ARM64 
+          cmake --build cmake-build --parallel
+
       - name: Build crashpad with client-side stack traces
         run: |
           cmake -B cmake-build-stacks -D CRASHPAD_ENABLE_STACKTRACE=ON
