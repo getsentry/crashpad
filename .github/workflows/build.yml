@@ -32,8 +32,8 @@ jobs:
       - name: Build crashpad Windows ARM64
         if: ${{ runner.os == 'Windows' }}
         run: |
-          cmake -B cmake-build -A ARM64 
-          cmake --build cmake-build --parallel
+          cmake -B cmake-build-arm64 -A ARM64 
+          cmake --build cmake-build-arm64 --parallel
 
       - name: Build crashpad with client-side stack traces
         run: |
