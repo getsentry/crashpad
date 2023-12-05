@@ -24,10 +24,22 @@ jobs:
           sudo apt update
           sudo apt install zlib1g-dev libcurl4-openssl-dev libssl-dev libunwind-dev pkg-config
 
+      - uses: compnerd/gha-setup-vsdevenv@main
+        if: ${{ runner.os == 'Windows' }}
+        with:
+          host_arch: amd64
+          arch: amd64
+
       - name: Build crashpad
         run: |
           cmake -B cmake-build -D CRASHPAD_BUILD_TOOLS=On
           cmake --build cmake-build --parallel
+
+      - uses: compnerd/gha-setup-vsdevenv@main
+        if: ${{ runner.os == 'Windows' }}
+        with:
+          host_arch: amd64
+          arch: arm64
 
       - name: Build crashpad Windows ARM64
         if: ${{ runner.os == 'Windows' }}
