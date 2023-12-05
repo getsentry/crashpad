@@ -24,16 +24,15 @@ jobs:
           sudo apt update
           sudo apt install zlib1g-dev libcurl4-openssl-dev libssl-dev libunwind-dev pkg-config
 
-      - uses: compnerd/gha-setup-vsdevenv@main
-        if: ${{ runner.os == 'Windows' }}
-        with:
-          host_arch: amd64
-          arch: amd64
-
       - name: Build crashpad
         run: |
           cmake -B cmake-build -D CRASHPAD_BUILD_TOOLS=On
           cmake --build cmake-build --parallel
+
+      - name: Build crashpad with client-side stack traces
+        run: |
+          cmake -B cmake-build-stacks -D CRASHPAD_ENABLE_STACKTRACE=ON
+          cmake --build cmake-build-stacks --parallel
 
       - uses: compnerd/gha-setup-vsdevenv@main
         if: ${{ runner.os == 'Windows' }}
@@ -46,11 +45,6 @@ jobs:
         run: |
           cmake -B cmake-build-arm64 -G "Visual Studio 17 2022" -A ARM64 -DCMAKE_TOOLCHAIN_FILE="cmake/toolchains/win_arm64.cmake" 
           cmake --build cmake-build-arm64
-
-      - name: Build crashpad with client-side stack traces
-        run: |
-          cmake -B cmake-build-stacks -D CRASHPAD_ENABLE_STACKTRACE=ON
-          cmake --build cmake-build-stacks --parallel
 
   build-ios:
     runs-on: macos-latest
