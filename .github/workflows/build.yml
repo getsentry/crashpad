@@ -18,27 +18,27 @@ jobs:
         with:
           submodules: "recursive"
 
-      - name: Installing Linux Dependencies
-        if: ${{ runner.os == 'Linux' }}
-        run: |
-          sudo apt update
-          sudo apt install zlib1g-dev libcurl4-openssl-dev libssl-dev libunwind-dev pkg-config
+     # - name: Installing Linux Dependencies
+     #   if: ${{ runner.os == 'Linux' }}
+     #   run: |
+     #     sudo apt update
+     #     sudo apt install zlib1g-dev libcurl4-openssl-dev libssl-dev libunwind-dev pkg-config
 
-      - name: Build crashpad
-        run: |
-          cmake -B cmake-build -D CRASHPAD_BUILD_TOOLS=On
-          cmake --build cmake-build --parallel
+     # - name: Build crashpad
+     #   run: |
+     #     cmake -B cmake-build -D CRASHPAD_BUILD_TOOLS=On
+     #     cmake --build cmake-build --parallel
 
-      - name: Build crashpad with client-side stack traces
-        run: |
-          cmake -B cmake-build-stacks -D CRASHPAD_ENABLE_STACKTRACE=ON
-          cmake --build cmake-build-stacks --parallel
+     # - name: Build crashpad with client-side stack traces
+     #   run: |
+     #     cmake -B cmake-build-stacks -D CRASHPAD_ENABLE_STACKTRACE=ON
+     #     cmake --build cmake-build-stacks --parallel
 
       - name: Build crashpad Windows ARM64
         if: ${{ runner.os == 'Windows' }}
         run: |
           & "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsamd64_arm64.bat"
-          cmake -B cmake-build-arm64 -DCMAKE_TOOLCHAIN_FILE=cmake/toolchains/win_arm64.cmake -G"Visual Studio 17 2022"
+          cmake -B cmake-build-arm64 -DCMAKE_TOOLCHAIN_FILE="cmake/toolchains/win_arm64.cmake"
           cmake --build cmake-build-arm64
 
   build-ios:
