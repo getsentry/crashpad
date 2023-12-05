@@ -34,15 +34,10 @@ jobs:
           cmake -B cmake-build-stacks -D CRASHPAD_ENABLE_STACKTRACE=ON
           cmake --build cmake-build-stacks --parallel
 
-      - uses: compnerd/gha-setup-vsdevenv@main
-        if: ${{ runner.os == 'Windows' }}
-        with:
-          host_arch: amd64
-          arch: arm64
-
       - name: Build crashpad Windows ARM64
         if: ${{ runner.os == 'Windows' }}
         run: |
+          & "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsamd64_arm64.bat"
           cmake -B cmake-build-arm64 -G "Visual Studio 17 2022" -A ARM64 -DCMAKE_TOOLCHAIN_FILE="cmake/toolchains/win_arm64.cmake" 
           cmake --build cmake-build-arm64
 
