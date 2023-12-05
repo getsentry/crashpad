@@ -177,9 +177,9 @@ void DoStackWalk(ProcessReaderWin::Thread* thread,
 #elif defined(ARCH_CPU_ARM64)
   machine_type = IMAGE_FILE_MACHINE_ARM64;
   ctx = *thread->context.context<CONTEXT>();
-  stack_frame.AddrPC.Offset = ctx->Pc;
-  stack_frame.AddrFrame.Offset = ctx->Fp;
-  stack_frame.AddrStack.Offset = ctx->Sp;
+  stack_frame.AddrPC.Offset = ctx.Pc;
+  stack_frame.AddrFrame.Offset = ctx.Fp;
+  stack_frame.AddrStack.Offset = ctx.Sp;
 #else
 #error Unsupported Windows Arch
 #endif  // ARCH_CPU_X86
