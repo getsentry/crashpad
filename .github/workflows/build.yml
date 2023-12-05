@@ -37,7 +37,6 @@ jobs:
       - name: Build crashpad Windows ARM64
         if: ${{ runner.os == 'Windows' }}
         run: |
-          # & "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsamd64_arm64.bat"
           cmake -B cmake-build-arm64 -DCMAKE_TOOLCHAIN_FILE="cmake/toolchains/win_arm64.cmake"
           cmake --build cmake-build-arm64
 
