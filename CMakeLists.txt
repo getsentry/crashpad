@@ -50,8 +50,6 @@ function(crashpad_install_dev)
 endfunction()
 
 if(WIN32)
-    message(STATUS "${CMAKE_SYSTEM_PROCESSOR}")
-    message(STATUS "${CMAKE_GENERATOR_PLATFORM}")
     if("${CMAKE_SYSTEM_PROCESSOR}" MATCHES ARM64)
         enable_language(ASM_MARMASM)
     else()
