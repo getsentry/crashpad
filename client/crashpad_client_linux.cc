@@ -452,6 +452,20 @@ CrashpadClient::CrashpadClient() {}
 CrashpadClient::~CrashpadClient() {}
 
 bool CrashpadClient::StartHandler(
+    const base::FilePath &handler,
+    const base::FilePath &database,
+    const base::FilePath &metrics_dir,
+    const std::string &url,
+    const std::map<std::string, std::string> &annotations,
+    const std::vector<std::string> &arguments,
+    bool restartable,
+    bool asynchronous_start,
+    const std::vector<base::FilePath> &attachments) {
+  return this->StartHandler(handler, database, metrics_dir, url, "", annotations, arguments, restartable,
+                            asynchronous_start, attachments);
+}
+
+bool CrashpadClient::StartHandler(
     const base::FilePath& handler,
     const base::FilePath& database,
     const base::FilePath& metrics_dir,

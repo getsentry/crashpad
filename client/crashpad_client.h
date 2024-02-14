@@ -127,6 +127,18 @@ class CrashpadClient {
                     const base::FilePath& database,
                     const base::FilePath& metrics_dir,
                     const std::string& url,
+                    const std::map<std::string, std::string>& annotations,
+                    const std::vector<std::string>& arguments,
+                    bool restartable,
+                    bool asynchronous_start,
+                    const std::vector<base::FilePath>& attachments = {});
+
+  //! \brief Same as above, but adds an `http_proxy` parameter.
+  //!
+  bool StartHandler(const base::FilePath& handler,
+                    const base::FilePath& database,
+                    const base::FilePath& metrics_dir,
+                    const std::string& url,
                     const std::string& http_proxy,
                     const std::map<std::string, std::string>& annotations,
                     const std::vector<std::string>& arguments,
