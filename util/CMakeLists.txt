@@ -507,6 +507,8 @@ if(APPLE)
             "-framework UIKit"
         )
     endif()
+
+    target_compile_options(crashpad_util PRIVATE "-Wno-deprecated-declarations")
 endif()
 
 if(LINUX)
