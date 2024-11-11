@@ -113,6 +113,10 @@ if(NOT IOS)
         if(MSVC)
             target_link_options(crashpad_handler PRIVATE "/SUBSYSTEM:WINDOWS")
         endif()
+
+        if (COMMAND sentry_add_version_resource)
+            sentry_add_version_resource(crashpad_handler "Crashpad Handler")
+        endif()
     endif()
 
     set_property(TARGET crashpad_handler PROPERTY EXPORT_NAME crashpad_handler)
@@ -143,6 +147,10 @@ if (WIN32)
     set_property(TARGET crashpad_wer PROPERTY EXPORT_NAME crashpad_wer)
     set_property(TARGET crashpad_wer PROPERTY PREFIX "") # ensure MINGW doesn't prefix "lib" to dll name
     add_library(crashpad::wer ALIAS crashpad_wer)
+
+    if (COMMAND sentry_add_version_resource)
+        sentry_add_version_resource(crashpad_wer "Crashpad WER Module")
+    endif()
 
     install(TARGETS crashpad_wer EXPORT crashpad_export
         RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
