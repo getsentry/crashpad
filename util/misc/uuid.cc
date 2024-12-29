@@ -121,7 +121,7 @@ bool UUID::InitializeWithNew() {
   // from libuuid is not available everywhere.
   // On Windows, do not use UuidCreate() to avoid a dependency on rpcrt4, so
   // that this function is usable early in DllMain().
-  base::RandBytes(base::byte_span_from_ref(*this));
+  base::RandBytes(as_writable_bytes(span_from_ref(*this)));
 
   // Set six bits per RFC 4122 §4.4 to identify this as a pseudo-random UUID.
   data_3 = (4 << 12) | (data_3 & 0x0fff);  // §4.1.3
