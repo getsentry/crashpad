@@ -64,8 +64,13 @@ void UUID::InitializeFromBytes(const uint8_t* bytes_ptr) {
   data_1 = base::numerics::U32FromBigEndian(bytes.subspan<0u, 4u>());
   data_2 = base::numerics::U16FromBigEndian(bytes.subspan<4u, 2u>());
   data_3 = base::numerics::U16FromBigEndian(bytes.subspan<6u, 2u>());
+#if defined(__cpp_lib_ranges) && __cpp_lib_ranges >= 201911L
   std::ranges::copy(bytes.subspan<8u, 2u>(), data_4);
   std::ranges::copy(bytes.subspan<10u, 6u>(), data_5);
+#else
+  memcpy(data_4, bytes.data() + 8u, 2u);
+  memcpy(data_5, bytes.data() + 10u, 6u);
+#endif
 }
 
 bool UUID::InitializeFromString(const base::StringPiece& string) {
