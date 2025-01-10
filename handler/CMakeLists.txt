@@ -89,7 +89,7 @@ if(NOT IOS)
         main.cc
     )
 
-    if(LINUX)
+    if(LINUX AND BUILD_SHARED_LIBS)
         target_sources(crashpad_handler PRIVATE
             ../client/pthread_create_linux.cc
         )
