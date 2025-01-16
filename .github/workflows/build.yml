@@ -12,12 +12,30 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: Ubuntu 24.04
+          - name: Ubuntu (GCC 13.3.0)
             platform: ubuntu-24.04
-          - name: Ubuntu 22.04
+            CC: gcc
+            CXX: g++
+          - name: Ubuntu (GCC 11.4.0)
             platform: ubuntu-22.04
-          - name: Ubuntu 20.04
+            CC: gcc
+            CXX: g++
+          - name: Ubuntu (GCC 9.4.0)
             platform: ubuntu-20.04
+            CC: gcc
+            CXX: g++
+          - name: Ubuntu (clang 24.04)
+            platform: ubuntu-24.04
+            CC: clang
+            CXX: clang++
+          - name: Ubuntu (clang 22.04)
+            platform: ubuntu-22.04
+            CC: clang
+            CXX: clang++
+          - name: Ubuntu (clang 20.04)
+            platform: ubuntu-20.04
+            CC: clang
+            CXX: clang++
           - name: Windows (x64)
             platform: windows-latest
           - name: Windows (arm64)
@@ -49,7 +67,7 @@ jobs:
         if: ${{ runner.os == 'Linux' }}
         run: |
           sudo apt update
-          sudo apt install zlib1g-dev libcurl4-openssl-dev libssl-dev libunwind-dev pkg-config
+          sudo apt install clang zlib1g-dev libcurl4-openssl-dev libssl-dev libunwind-dev pkg-config
 
       - name: Installing LLVM-MINGW Dependencies
         if: ${{ runner.os == 'Windows' && matrix.MINGW == '1' }}
@@ -62,6 +80,8 @@ jobs:
       - name: Build crashpad
         shell: bash
         run: |
+          [ "${{ matrix.CC }}" ] && export CC="${{ matrix.CC }}"
+          [ "${{ matrix.CXX }}" ] && export CXX="${{ matrix.CXX }}"
           echo "CMAKE_DEFINES=${CMAKE_DEFINES}"
           cmake -B cmake-build -D CRASHPAD_BUILD_TOOLS=On ${CMAKE_DEFINES}
           cmake --build cmake-build --parallel
@@ -69,6 +89,8 @@ jobs:
       - name: Build crashpad with client-side stack traces
         shell: bash
         run: |
+          [ "${{ matrix.CC }}" ] && export CC="${{ matrix.CC }}"
+          [ "${{ matrix.CXX }}" ] && export CXX="${{ matrix.CXX }}"
           echo "CMAKE_DEFINES=${CMAKE_DEFINES}"
           cmake -B cmake-build-stacks -D CRASHPAD_ENABLE_STACKTRACE=ON ${CMAKE_DEFINES}
           cmake --build cmake-build-stacks --parallel
