@@ -12,8 +12,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: Ubuntu
-            platform: ubuntu-latest
+          - name: Ubuntu 24.04
+            platform: ubuntu-24.04
+          - name: Ubuntu 22.04
+            platform: ubuntu-22.04
+          - name: Ubuntu 20.04
+            platform: ubuntu-20.04
           - name: Windows (x64)
             platform: windows-latest
           - name: Windows (arm64)
