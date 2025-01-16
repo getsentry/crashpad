@@ -554,7 +554,6 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     )
 endif()
 
-
 set_property(TARGET crashpad_util PROPERTY EXPORT_NAME util)
 add_library(crashpad::util ALIAS crashpad_util)
 
