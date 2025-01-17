@@ -69,12 +69,6 @@ if(WIN32)
     endif()
 endif()
 
-if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    target_compile_options(crashpad_handler_lib PRIVATE
-        $<$<COMPILE_LANGUAGE:CXX>:-Wno-ignored-attributes>
-    )
-endif()
-
 set_property(TARGET crashpad_handler_lib PROPERTY EXPORT_NAME handler)
 add_library(crashpad::handler_lib ALIAS crashpad_handler_lib)
 
@@ -89,6 +83,11 @@ if(NOT IOS)
         main.cc
     )
 
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        target_compile_options(crashpad_handler PRIVATE
+            $<$<COMPILE_LANGUAGE:CXX>:-Wno-ignored-attributes>
+        )
+    endif()
     if(LINUX)
         target_sources(crashpad_handler PRIVATE
             ../client/pthread_create_linux.cc
