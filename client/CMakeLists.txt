@@ -113,6 +113,7 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     target_compile_options(crashpad_client PRIVATE
         $<$<COMPILE_LANGUAGE:CXX>:-Wno-multichar>
         $<$<COMPILE_LANGUAGE:CXX>:-Wno-attributes>
+        $<$<COMPILE_LANGUAGE:CXX>:-Wno-ignored-attributes>
     )
 endif()
 
