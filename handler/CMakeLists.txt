@@ -71,7 +71,7 @@ endif()
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     target_compile_options(crashpad_handler_lib PRIVATE
-        "-Wno-multichar"
+        $<$<COMPILE_LANGUAGE:CXX>:-Wno-ignored-attributes>
     )
 endif()
 
