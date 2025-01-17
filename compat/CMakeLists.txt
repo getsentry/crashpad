@@ -98,13 +98,6 @@ if(LINUX)
     target_link_libraries(crashpad_compat PRIVATE dl)
 endif()
 
-if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    target_compile_options(crashpad_compat PRIVATE
-        $<$<COMPILE_LANGUAGE:CXX>:-Wno-attributes>
-    )
-endif()
-
-
 if(MSVC)
     target_include_directories(crashpad_compat ${TI_TYPE} "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/win>")
 elseif(MINGW)

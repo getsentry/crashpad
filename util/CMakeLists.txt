@@ -547,13 +547,6 @@ if(WIN32)
     endif()
 endif()
 
-if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    target_compile_options(crashpad_util PRIVATE
-        $<$<COMPILE_LANGUAGE:CXX>:-Wno-multichar>
-        $<$<COMPILE_LANGUAGE:CXX>:-Wno-attributes>
-    )
-endif()
-
 set_property(TARGET crashpad_util PROPERTY EXPORT_NAME util)
 add_library(crashpad::util ALIAS crashpad_util)
 

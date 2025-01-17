@@ -109,14 +109,6 @@ if(IOS)
     )
 endif()
 
-if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    target_compile_options(crashpad_client PRIVATE
-        $<$<COMPILE_LANGUAGE:CXX>:-Wno-multichar>
-        $<$<COMPILE_LANGUAGE:CXX>:-Wno-attributes>
-        $<$<COMPILE_LANGUAGE:CXX>:-Wno-ignored-attributes>
-    )
-endif()
-
 crashpad_install_target(crashpad_client)
 crashpad_install_dev(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/"
     DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/crashpad/client"
