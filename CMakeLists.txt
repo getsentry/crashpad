@@ -128,6 +128,14 @@ elseif(MINGW)
     # FIXME: cmake 3.13 added target_link_options
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -municode")
 endif()
+
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    target_compile_options(crashpad_interface INTERFACE
+        $<$<COMPILE_LANGUAGE:CXX>:-Wno-multichar>
+        $<$<COMPILE_LANGUAGE:CXX>:-Wno-attributes>
+    )
+endif()
+
 add_library(crashpad::interface ALIAS crashpad_interface)
 
 add_subdirectory(compat)
