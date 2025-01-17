@@ -31,6 +31,11 @@ if(CRASHPAD_BUILD_TOOLS)
             NOMINMAX
         )
     endif()
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        target_compile_options(crashpad_tools PRIVATE
+            $<$<COMPILE_LANGUAGE:CXX>:-Wno-multichar>
+        )
+    endif()
     crashpad_install_target(dump_minidump_annotations)
 
     add_executable(crashpad_database_util
