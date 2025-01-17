@@ -15,10 +15,7 @@
 #ifndef CRASHPAD_COMPAT_LINUX_SIGNAL_H_
 #define CRASHPAD_COMPAT_LINUX_SIGNAL_H_
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wpedantic"
 #include_next <signal.h>
-#pragma GCC diagnostic pop
 
 // Missing from glibc and bionic
 #if !defined(SS_AUTODISARM)
