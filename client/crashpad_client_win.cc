@@ -881,14 +881,18 @@ void CrashpadClient::DumpWithoutCrash(const CONTEXT& context) {
   g_non_crash_exception_information.exception_pointers =
       FromPointerCast<WinVMAddress>(&exception_pointers);
 
-  g_wer_registration.in_dump_without_crashing = true;
-  bool set_event_result = !!SetEvent(g_wer_registration.dump_without_crashing);
-  PLOG_IF(ERROR, !set_event_result) << "SetEvent";
+  if ((first_chance_handler_ && !first_chance_handler_(&exception_pointers)) ||
+      !first_chance_handler_) {
+    g_wer_registration.in_dump_without_crashing = true;
+    bool set_event_result =
+        !!SetEvent(g_wer_registration.dump_without_crashing);
+    PLOG_IF(ERROR, !set_event_result) << "SetEvent";
 
-  DWORD wfso_result =
-      WaitForSingleObject(g_wer_registration.dump_completed, INFINITE);
-  PLOG_IF(ERROR, wfso_result != WAIT_OBJECT_0) << "WaitForSingleObject";
-  g_wer_registration.in_dump_without_crashing = false;
+    DWORD wfso_result =
+        WaitForSingleObject(g_wer_registration.dump_completed, INFINITE);
+    PLOG_IF(ERROR, wfso_result != WAIT_OBJECT_0) << "WaitForSingleObject";
+    g_wer_registration.in_dump_without_crashing = false;
+  }
 }
 
 // static

@@ -161,6 +161,12 @@ class SignalHandler {
     last_chance_handler_ = handler;
   }
 
+  bool HasFirstChanceHandler() { return first_chance_handler_ != nullptr; }
+
+  bool InvokeFirstChanceHandler(int sig, siginfo_t* siginfo, ucontext_t* uctx) {
+    return first_chance_handler_(sig, siginfo, uctx);
+  }
+
   // The base implementation for all signal handlers, suitable for calling
   // directly to simulate signal delivery.
   void HandleCrash(int signo, siginfo_t* siginfo, void* context) {
@@ -226,7 +232,7 @@ class SignalHandler {
       //  first-chance handler to this would mean to adapt the pipeline, because
       //  even if the handler was safe wrt the above scenarios, there is
       //  currently no way in the event model to correlate crashes this way.
-     if (handler_->first_chance_handler_ &&
+      if (handler_->first_chance_handler_ &&
           handler_->first_chance_handler_(
               signo, siginfo, static_cast<ucontext_t*>(context))) {
         return;
@@ -749,7 +755,8 @@ bool CrashpadClient::StartHandlerForClient(
 
 // static
 void CrashpadClient::DumpWithoutCrash(NativeCPUContext* context) {
-  if (!SignalHandler::Get()) {
+  SignalHandler* handler = SignalHandler::Get();
+  if (!handler) {
     DLOG(ERROR) << "Crashpad isn't enabled";
     return;
   }
@@ -766,8 +773,13 @@ void CrashpadClient::DumpWithoutCrash(NativeCPUContext* context) {
   siginfo.si_signo = Signals::kSimulatedSigno;
   siginfo.si_errno = 0;
   siginfo.si_code = 0;
-  SignalHandler::Get()->HandleCrash(
-      siginfo.si_signo, &siginfo, reinterpret_cast<void*>(context));
+  if ((handler->HasFirstChanceHandler() &&
+       !handler->InvokeFirstChanceHandler(
+           siginfo.si_signo, &siginfo, context)) ||
+      !handler->HasFirstChanceHandler()) {
+    handler->HandleCrash(
+        siginfo.si_signo, &siginfo, reinterpret_cast<void*>(context));
+  }
 }
 
 // static
