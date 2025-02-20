@@ -188,13 +188,24 @@ bool CrashReportExceptionHandler::HandleExceptionWithConnection(
     process_snapshot->SetClientID(client_id);
   }
 
-  return write_minidump_to_database_
+  // Force Crashpad Handler to wait for one upload attempt if there is a pending report
+  // TODO make this an option + add it to the other handlers (win/mac)
+  bool result =  write_minidump_to_database_
              ? WriteMinidumpToDatabase(process_snapshot.get(),
                                        sanitized_snapshot.get(),
                                        write_minidump_to_log_,
                                        local_report_id)
              : WriteMinidumpToLog(process_snapshot.get(),
                                   sanitized_snapshot.get());
+
+  // Force flush only if WriteMinidumpToDatabase was successful
+  if (write_minidump_to_database_ && result) {
+    // Flushes upload thread, forcing the handler to wait for one
+    // upload attempt if there is a pending report, before sending SIGCONT to app.
+    // Without this, SIGCONT is sent during the uploading, app crashes and UploadThread gets a SIGKILL.
+    this->FlushUploadThread();
+  }
+  return result;
 }
 
 bool CrashReportExceptionHandler::WriteMinidumpToDatabase(
@@ -301,6 +312,18 @@ bool CrashReportExceptionHandler::WriteMinidumpToLog(
     return false;
   }
   return writer.Flush();
+}
+
+
+//  Force Crashpad Handler to wait for one upload attempt if there is a pending report
+void CrashReportExceptionHandler::FlushUploadThread() {
+  if (upload_thread_->is_running()) {
+    // Following "Stop" call terminates the upload thread after completing whatever task it is
+    // performing e.g. uploading a report. If it is not performing any task, it will terminate
+    // immediately. It blocks while waiting for the upload thread to terminate making
+    // sure that the pending report (if any) is sent before returning.
+    upload_thread_->Stop();
+  }
 }
 
 }  // namespace crashpad

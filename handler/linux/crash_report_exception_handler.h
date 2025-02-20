@@ -108,6 +108,12 @@ class CrashReportExceptionHandler : public ExceptionHandlerServer::Delegate {
                                UUID* local_report_id);
   bool WriteMinidumpToLog(ProcessSnapshotLinux* process_snapshot,
                           ProcessSnapshotSanitized* sanitized_snapshot);
+  // Force Crashpad Handler to wait for one upload attempt if there is a pending report
+  /**
+   * Flush upload thread. If any report is being uploaded, this will
+   * block until an upload attempt is made.
+   */
+  void FlushUploadThread();
 
   CrashReportDatabase* database_;  // weak
   CrashReportUploadThread* upload_thread_;  // weak
