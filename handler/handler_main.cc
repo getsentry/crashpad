@@ -1109,10 +1109,9 @@ int HandlerMain(int argc,
 #endif  // BUILDFLAG(IS_LINUX)
       user_stream_sources
 #if BUILDFLAG(IS_LINUX)
-      ,options.wait_for_upload);
-#else
-  );
+      ,options.wait_for_upload
 #endif
+  );
 #endif  // BUILDFLAG(IS_CHROMEOS_ASH) || BUILDFLAG(IS_CHROMEOS_LACROS)
 
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_ANDROID)
