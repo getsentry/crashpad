@@ -132,7 +132,8 @@ class CrashpadClient {
                     const std::vector<std::string>& arguments,
                     bool restartable,
                     bool asynchronous_start,
-                    const std::vector<base::FilePath>& attachments = {});
+                    const std::vector<base::FilePath>& attachments = {},
+                    bool wait_for_upload = false);
 
 #if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || \
     DOXYGEN

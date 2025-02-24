@@ -106,14 +106,16 @@ CrashReportExceptionHandler::CrashReportExceptionHandler(
     const std::vector<base::FilePath>* attachments,
     bool write_minidump_to_database,
     bool write_minidump_to_log,
-    const UserStreamDataSources* user_stream_data_sources)
+    const UserStreamDataSources* user_stream_data_sources,
+    bool wait_for_upload)
     : database_(database),
       upload_thread_(upload_thread),
       process_annotations_(process_annotations),
       attachments_(attachments),
       write_minidump_to_database_(write_minidump_to_database),
       write_minidump_to_log_(write_minidump_to_log),
-      user_stream_data_sources_(user_stream_data_sources) {
+      user_stream_data_sources_(user_stream_data_sources),
+      wait_for_upload_(wait_for_upload){
   DCHECK(write_minidump_to_database_ | write_minidump_to_log_);
 }
 
@@ -199,7 +201,7 @@ bool CrashReportExceptionHandler::HandleExceptionWithConnection(
                                   sanitized_snapshot.get());
 
   // Force flush only if WriteMinidumpToDatabase was successful
-  if (write_minidump_to_database_ && result) {
+  if (wait_for_upload_ && write_minidump_to_database_ && result) {
     // Flushes upload thread, forcing the handler to wait for one
     // upload attempt if there is a pending report, before sending SIGCONT to app.
     // Without this, SIGCONT is sent during the uploading, app crashes and UploadThread gets a SIGKILL.
@@ -317,7 +319,7 @@ bool CrashReportExceptionHandler::WriteMinidumpToLog(
 
 //  Force Crashpad Handler to wait for one upload attempt if there is a pending report
 void CrashReportExceptionHandler::FlushUploadThread() {
-  if (upload_thread_->is_running()) {
+  if (upload_thread_ && upload_thread_->is_running()) {
     // Following "Stop" call terminates the upload thread after completing whatever task it is
     // performing e.g. uploading a report. If it is not performing any task, it will terminate
     // immediately. It blocks while waiting for the upload thread to terminate making
