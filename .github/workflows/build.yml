@@ -34,6 +34,9 @@ jobs:
             CXX: clang++
           - name: Windows (x64)
             platform: windows-latest
+          - name: Windows ClangCL (x64)
+            platform: windows-latest
+            CMAKE_DEFINES: -G 'Visual Studio 17 2022' -A x64 -T ClangCL
           - name: Windows (arm64)
             platform: windows-latest
             CMAKE_DEFINES: -DCMAKE_TOOLCHAIN_FILE=cmake/toolchains/win_arm64.cmake -A arm64
@@ -41,7 +44,7 @@ jobs:
             platform: windows-latest
             MINGW: 1
             MINGW_PKG_PREFIX: x86_64-w64-mingw32
-            MINGW_ASM_MASM_COMPILER: llvm-ml;-m64
+            MINGW_ASM_MASM_COMPILER: "'llvm-ml;-m64'"
             CMAKE_DEFINES: -DCRASHPAD_ZLIB_SYSTEM=OFF -DCRASHPAD_BUILD_TOOLS=OFF -G Ninja
           - name: LLVM-MINGW (arm64)
             platform: windows-latest
@@ -53,7 +56,7 @@ jobs:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.platform }}
     env:
-      CMAKE_DEFINES: ${{ matrix.CMAKE_DEFINES }}
+      CMAKE_DEFINES: "${{ matrix.CMAKE_DEFINES }}"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -79,7 +82,7 @@ jobs:
           [ "${{ matrix.CC }}" ] && export CC="${{ matrix.CC }}"
           [ "${{ matrix.CXX }}" ] && export CXX="${{ matrix.CXX }}"
           echo "CMAKE_DEFINES=${CMAKE_DEFINES}"
-          cmake -B cmake-build -D CRASHPAD_BUILD_TOOLS=On ${CMAKE_DEFINES}
+          eval "cmake -B cmake-build -D CRASHPAD_BUILD_TOOLS=On $CMAKE_DEFINES"
           cmake --build cmake-build --parallel
 
       - name: Build crashpad with client-side stack traces
@@ -88,7 +91,7 @@ jobs:
           [ "${{ matrix.CC }}" ] && export CC="${{ matrix.CC }}"
           [ "${{ matrix.CXX }}" ] && export CXX="${{ matrix.CXX }}"
           echo "CMAKE_DEFINES=${CMAKE_DEFINES}"
-          cmake -B cmake-build-stacks -D CRASHPAD_ENABLE_STACKTRACE=ON ${CMAKE_DEFINES}
+          eval "cmake -B cmake-build-stacks -D CRASHPAD_ENABLE_STACKTRACE=ON $CMAKE_DEFINES"
           cmake --build cmake-build-stacks --parallel
 
   build-ios:
