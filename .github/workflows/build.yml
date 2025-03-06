@@ -13,9 +13,9 @@ jobs:
       matrix:
         include:
           - name: Ubuntu (GCC 14.2.0)
-          - platform: ubuntu-24.04
-          - CC: gcc-14
-          - CXX: g++-14
+            platform: ubuntu-24.04
+            CC: gcc-14
+            CXX: g++-14
           - name: Ubuntu (GCC 13.3.0)
             platform: ubuntu-24.04
             CC: gcc
