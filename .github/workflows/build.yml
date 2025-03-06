@@ -21,9 +21,9 @@ jobs:
             CC: gcc
             CXX: g++
           - name: Ubuntu (GCC 9.4.0)
-            platform: ubuntu-20.04
-            CC: gcc
-            CXX: g++
+            platform: ubuntu-22.04
+            CC: gcc-9
+            CXX: g++-9
           - name: Ubuntu (clang 18.1.3)
             platform: ubuntu-24.04
             CC: clang
