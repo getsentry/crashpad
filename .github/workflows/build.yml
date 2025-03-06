@@ -20,7 +20,7 @@ jobs:
             platform: ubuntu-22.04
             CC: gcc
             CXX: g++
-          - name: Ubuntu (GCC 9.4.0)
+          - name: Ubuntu (GCC 9.5.0)
             platform: ubuntu-22.04
             CC: gcc-9
             CXX: g++-9
