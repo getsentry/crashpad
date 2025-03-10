@@ -368,6 +368,8 @@ if(WIN32)
         win/scoped_registry_key.h
         win/scoped_set_event.cc
         win/scoped_set_event.h
+        win/screenshot.cc
+        win/screenshot.h
         win/session_end_watcher.cc
         win/session_end_watcher.h
         win/termination_codes.h

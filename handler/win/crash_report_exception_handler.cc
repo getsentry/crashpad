@@ -29,6 +29,7 @@
 #include "util/misc/metrics.h"
 #include "util/win/registration_protocol_win.h"
 #include "util/win/scoped_process_suspend.h"
+#include "util/win/screenshot.h"
 #include "util/win/termination_codes.h"
 
 namespace crashpad {
@@ -38,11 +39,13 @@ CrashReportExceptionHandler::CrashReportExceptionHandler(
     CrashReportUploadThread* upload_thread,
     const std::map<std::string, std::string>* process_annotations,
     const std::vector<base::FilePath>* attachments,
+    const base::FilePath* screenshot,
     const UserStreamDataSources* user_stream_data_sources)
     : database_(database),
       upload_thread_(upload_thread),
       process_annotations_(process_annotations),
       attachments_(attachments),
+      screenshot_(screenshot),
       user_stream_data_sources_(user_stream_data_sources) {}
 
 CrashReportExceptionHandler::~CrashReportExceptionHandler() {}
@@ -130,6 +133,20 @@ unsigned int CrashReportExceptionHandler::ExceptionHandlerServerException(
       }
 
       CopyFileContent(&file_reader, file_writer);
+    }
+
+    if (screenshot_ && !screenshot_->empty()) {
+      if (CaptureScreenshot(process_snapshot.ProcessID(), *screenshot_)) {
+        FileReader file_reader;
+        if (file_reader.Open(*screenshot_)) {
+          base::FilePath filename = screenshot_->BaseName();
+          FileWriter* file_writer =
+              new_report->AddAttachment(base::WideToUTF8(filename.value()));
+          if (file_writer != nullptr) {
+            CopyFileContent(&file_reader, file_writer);
+          }
+        }
+      }
     }
 
     UUID uuid;

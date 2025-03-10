@@ -98,6 +98,9 @@ namespace {
 #define ATTACHMENTS_SUPPORTED 1
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) ||
         // BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_APPLE)
+#if BUILDFLAG(IS_WIN)
+#define SCREENSHOT_SUPPORTED 1
+#endif  // BUILDFLAG(IS_WIN)
 
 void Usage(const base::FilePath& me) {
   // clang-format off
@@ -113,6 +116,12 @@ void Usage(const base::FilePath& me) {
 "                              at the time of the crash\n"
   // clang-format on
 #endif  // ATTACHMENTS_SUPPORTED
+#if defined(SCREENSHOT_SUPPORTED)
+      // clang-format off
+"      --screenshot=FILE_PATH  capture a screenshot to FILE_PATH\n"
+"                              at the time of the crash\n"
+  // clang-format on
+#endif  // SCREENSHOT_SUPPORTED
       // clang-format off
 "      --database=PATH         store the crash report database at PATH\n"
   // clang-format on
@@ -257,6 +266,9 @@ struct Options {
 #if defined(ATTACHMENTS_SUPPORTED)
   std::vector<base::FilePath> attachments;
 #endif  // ATTACHMENTS_SUPPORTED
+#if defined(SCREENSHOT_SUPPORTED)
+  base::FilePath screenshot;
+#endif  // SCREENSHOT_SUPPORTED
 };
 
 // Splits |key_value| on '=' and inserts the resulting key and value into |map|.
@@ -586,6 +598,9 @@ int HandlerMain(int argc,
 #if defined(ATTACHMENTS_SUPPORTED)
     kOptionAttachment,
 #endif  // ATTACHMENTS_SUPPORTED
+#if defined(SCREENSHOT_SUPPORTED)
+    kOptionScreenshot,
+#endif  // SCREENSHOT_SUPPORTED
     kOptionDatabase,
 #if BUILDFLAG(IS_APPLE)
     kOptionHandshakeFD,
@@ -643,6 +658,9 @@ int HandlerMain(int argc,
 #if defined(ATTACHMENTS_SUPPORTED)
     {"attachment", required_argument, nullptr, kOptionAttachment},
 #endif  // ATTACHMENTS_SUPPORTED
+#if defined(SCREENSHOT_SUPPORTED)
+    {"screenshot", required_argument, nullptr, kOptionScreenshot},
+#endif  // SCREENSHOT_SUPPORTED
     {"database", required_argument, nullptr, kOptionDatabase},
 #if BUILDFLAG(IS_APPLE)
     {"handshake-fd", required_argument, nullptr, kOptionHandshakeFD},
@@ -759,6 +777,13 @@ int HandlerMain(int argc,
         break;
       }
 #endif  // ATTACHMENTS_SUPPORTED
+#if defined(SCREENSHOT_SUPPORTED)
+      case kOptionScreenshot: {
+        options.screenshot = base::FilePath(
+            ToolSupport::CommandLineArgumentToFilePathStringType(optarg));
+        break;
+      }
+#endif  // SCREENSHOT_SUPPORTED
       case kOptionDatabase: {
         options.database = base::FilePath(
             ToolSupport::CommandLineArgumentToFilePathStringType(optarg));
@@ -1084,6 +1109,9 @@ int HandlerMain(int argc,
 #if defined(ATTACHMENTS_SUPPORTED)
       &options.attachments,
 #endif  // ATTACHMENTS_SUPPORTED
+#if defined(SCREENSHOT_SUPPORTED)
+      &options.screenshot,
+#endif  // SCREENSHOT_SUPPORTED
 #if BUILDFLAG(IS_ANDROID)
       options.write_minidump_to_database,
       options.write_minidump_to_log,

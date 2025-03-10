@@ -355,6 +355,7 @@ struct BackgroundHandlerStartThreadData {
       const std::map<std::string, std::string>& annotations,
       const std::vector<std::string>& arguments,
       const std::vector<base::FilePath>& attachments,
+      const base::FilePath& screenshot,
       const std::wstring& ipc_pipe,
       ScopedFileHANDLE ipc_pipe_handle)
       : handler(handler),
@@ -365,6 +366,7 @@ struct BackgroundHandlerStartThreadData {
         annotations(annotations),
         arguments(arguments),
         attachments(attachments),
+        screenshot(screenshot),
         ipc_pipe(ipc_pipe),
         ipc_pipe_handle(std::move(ipc_pipe_handle)) {}
 
@@ -376,6 +378,7 @@ struct BackgroundHandlerStartThreadData {
   std::map<std::string, std::string> annotations;
   std::vector<std::string> arguments;
   std::vector<base::FilePath> attachments;
+  base::FilePath screenshot;
   std::wstring ipc_pipe;
   ScopedFileHANDLE ipc_pipe_handle;
 };
@@ -442,6 +445,11 @@ bool StartHandlerProcess(
   for (const base::FilePath& attachment : data->attachments) {
     AppendCommandLineArgument(
         FormatArgumentString("attachment", attachment.value()), &command_line);
+  }
+  if (!data->screenshot.empty()) {
+    AppendCommandLineArgument(
+        FormatArgumentString("screenshot", data->screenshot.value()),
+        &command_line);
   }
 
   ScopedKernelHANDLE this_process(
@@ -637,7 +645,8 @@ bool CrashpadClient::StartHandler(
     const std::vector<std::string>& arguments,
     bool restartable,
     bool asynchronous_start,
-    const std::vector<base::FilePath>& attachments) {
+    const std::vector<base::FilePath>& attachments,
+    const base::FilePath& screenshot) {
   DCHECK(ipc_pipe_.empty());
 
   // Both the pipe and the signalling events have to be created on the main
@@ -669,6 +678,7 @@ bool CrashpadClient::StartHandler(
                                                    annotations,
                                                    arguments,
                                                    attachments,
+                                                   screenshot,
                                                    ipc_pipe_,
                                                    std::move(ipc_pipe_handle));
 

@@ -60,6 +60,7 @@ class CrashReportExceptionHandler final
       CrashReportUploadThread* upload_thread,
       const std::map<std::string, std::string>* process_annotations,
       const std::vector<base::FilePath>* attachments,
+      const base::FilePath* screenshot,
       const UserStreamDataSources* user_stream_data_sources);
 
   CrashReportExceptionHandler(const CrashReportExceptionHandler&) = delete;
@@ -83,6 +84,7 @@ class CrashReportExceptionHandler final
   CrashReportUploadThread* upload_thread_;  // weak
   const std::map<std::string, std::string>* process_annotations_;  // weak
   const std::vector<base::FilePath>* attachments_;  // weak
+  const base::FilePath* screenshot_;  // weak
   const UserStreamDataSources* user_stream_data_sources_;  // weak
 };
 
