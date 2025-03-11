@@ -164,7 +164,7 @@ class CrashReportUploadThread : public WorkerThread::Delegate,
   //! \param[in] report The crash report to process.
   //!
   //! If report upload is enabled, this method attempts to upload \a report by
-  //! calling UplaodReport(). If the upload is successful, the report will be
+  //! calling UploadReport(). If the upload is successful, the report will be
   //! marked as “completed” in the database. If the upload fails and more
   //! retries are desired, the report’s upload-attempt count and
   //! last-upload-attempt time will be updated in the database and it will
