@@ -164,7 +164,7 @@ class CrashReportUploadThread : public WorkerThread::Delegate,
   //! \param[in] report The crash report to process.
   //!
   //! If report upload is enabled, this method attempts to upload \a report by
-  //! calling UplaodReport(). If the upload is successful, the report will be
+  //! calling UploadReport(). If the upload is successful, the report will be
   //! marked as “completed” in the database. If the upload fails and more
   //! retries are desired, the report’s upload-attempt count and
   //! last-upload-attempt time will be updated in the database and it will
@@ -208,7 +208,6 @@ class CrashReportUploadThread : public WorkerThread::Delegate,
   //! upload attempts to be retried.
   bool ShouldRateLimitUpload(const CrashReportDatabase::Report& report);
 
-#if BUILDFLAG(IS_IOS)
   //! \brief Rate-limit report retries.
   //!
   //! \param[in] report The crash report to process.
@@ -217,12 +216,11 @@ class CrashReportUploadThread : public WorkerThread::Delegate,
   //! rate limit in ShouldRateLimitUpload). When a report upload ends in a retry
   //! state, an in-memory only timestamp is stored in |retry_uuid_time_map_|
   //! with the next possible retry time. This timestamp is a backoff from the
-  //! main thread work interval, doubling on each attemt. Because this is only
+  //! main thread work interval, doubling on each attempt. Because this is only
   //! stored in memory, on restart reports in the retry state will always be
   //! tried once, and then fall back into the next backoff. This continues until
   //! kRetryAttempts is reached.
   bool ShouldRateLimitRetry(const CrashReportDatabase::Report& report);
-#endif
 
   const Options options_;
   const ProcessPendingReportsObservationCallback callback_;
@@ -230,10 +228,8 @@ class CrashReportUploadThread : public WorkerThread::Delegate,
   const std::string http_proxy_;
   WorkerThread thread_;
   ThreadSafeVector<UUID> known_pending_report_uuids_;
-#if BUILDFLAG(IS_IOS)
   // This is not thread-safe, and only used by the worker thread.
   std::map<UUID, time_t> retry_uuid_time_map_;
-#endif
   CrashReportDatabase* database_;  // weak
 };
 

@@ -483,6 +483,7 @@ bool CrashpadClient::StartHandler(
     bool restartable,
     bool asynchronous_start,
     const std::vector<base::FilePath>& attachments,
+    const base::FilePath& screenshot,
     bool wait_for_upload) {
   (void) wait_for_upload; // unused in mac (for now)
 
