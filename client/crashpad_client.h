@@ -840,6 +840,20 @@ class CrashpadClient {
   static void SetCrashLoopBefore(uint64_t crash_loop_before_time);
 #endif
 
+#if BUILDFLAG(IS_WIN) || DOXYGEN
+  //! \brief Adds a file to the list of files to be attached to the crash
+  //!     report.
+  //!
+  //! \param[in] attachment The path to the file to be added.
+  void AddAttachment(const base::FilePath& attachment);
+
+  //! \brief Removes a file from the list of files to be attached to the crash
+  //!     report.
+  //!
+  //! \param[in] attachment The path to the file to be removed.
+  void RemoveAttachment(const base::FilePath& attachment);
+#endif
+
  private:
 #if BUILDFLAG(IS_WIN)
   //!  \brief Registers process handlers for the client.

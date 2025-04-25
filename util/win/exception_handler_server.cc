@@ -455,6 +455,26 @@ bool ExceptionHandlerServer::ServiceClientConnection(
       // Handled below.
       break;
 
+    case ClientToServerMessage::kAddAttachment: {
+      ServerToClientMessage shutdown_response = {};
+      service_context.delegate()->ExceptionHandlerServerAttachmentAdded(
+          base::FilePath(message.attachment.path));
+      LoggingWriteFile(service_context.pipe(),
+                       &shutdown_response,
+                       sizeof(shutdown_response));
+      return false;
+    }
+
+    case ClientToServerMessage::kRemoveAttachment: {
+      ServerToClientMessage shutdown_response = {};
+      service_context.delegate()->ExceptionHandlerServerAttachmentRemoved(
+          base::FilePath(message.attachment.path));
+      LoggingWriteFile(service_context.pipe(),
+                       &shutdown_response,
+                       sizeof(shutdown_response));
+      return false;
+    }
+
     default:
       LOG(ERROR) << "unhandled message type: " << message.type;
       return false;

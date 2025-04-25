@@ -1183,4 +1183,22 @@ void CrashpadClient::SetFirstChanceExceptionHandler(
   first_chance_handler_ = handler;
 }
 
+void CrashpadClient::AddAttachment(const base::FilePath& attachment) {
+  ClientToServerMessage message = {};
+  message.type = ClientToServerMessage::kAddAttachment;
+  swprintf_s(
+      message.attachment.path, MAX_PATH, L"%ls", attachment.value().c_str());
+  ServerToClientMessage response = {};
+  SendToCrashHandlerServer(ipc_pipe_, message, &response);
+}
+
+void CrashpadClient::RemoveAttachment(const base::FilePath& attachment) {
+  ClientToServerMessage message = {};
+  message.type = ClientToServerMessage::kRemoveAttachment;
+  swprintf_s(
+      message.attachment.path, MAX_PATH, L"%ls", attachment.value().c_str());
+  ServerToClientMessage response = {};
+  SendToCrashHandlerServer(ipc_pipe_, message, &response);
+}
+
 }  // namespace crashpad

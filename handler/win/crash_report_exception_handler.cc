@@ -45,7 +45,7 @@ CrashReportExceptionHandler::CrashReportExceptionHandler(
     : database_(database),
       upload_thread_(upload_thread),
       process_annotations_(process_annotations),
-      attachments_(attachments),
+      attachments_(*attachments),
       screenshot_(screenshot),
       wait_for_upload_(wait_for_upload),
       user_stream_data_sources_(user_stream_data_sources) {}
@@ -117,7 +117,7 @@ unsigned int CrashReportExceptionHandler::ExceptionHandlerServerException(
       return termination_code;
     }
 
-    for (const auto& attachment : (*attachments_)) {
+    for (const auto& attachment : attachments_) {
       FileReader file_reader;
       if (!file_reader.Open(attachment)) {
         LOG(ERROR) << "attachment " << attachment
@@ -173,6 +173,26 @@ unsigned int CrashReportExceptionHandler::ExceptionHandlerServerException(
 
   Metrics::ExceptionCaptureResult(Metrics::CaptureResult::kSuccess);
   return termination_code;
+}
+
+void CrashReportExceptionHandler::ExceptionHandlerServerAttachmentAdded(
+    const base::FilePath& attachment) {
+  auto it = std::find(attachments_.begin(), attachments_.end(), attachment);
+  if (it != attachments_.end()) {
+    LOG(WARNING) << "ignoring duplicate attachment " << attachment;
+    return;
+  }
+  attachments_.push_back(attachment);
+}
+
+void CrashReportExceptionHandler::ExceptionHandlerServerAttachmentRemoved(
+    const base::FilePath& attachment) {
+  auto it = std::find(attachments_.begin(), attachments_.end(), attachment);
+  if (it == attachments_.end()) {
+    LOG(WARNING) << "ignoring non-existent attachment " << attachment;
+    return;
+  }
+  attachments_.erase(it);
 }
 
 }  // namespace crashpad

@@ -79,12 +79,16 @@ class CrashReportExceptionHandler final
       HANDLE process,
       WinVMAddress exception_information_address,
       WinVMAddress debug_critical_section_address) override;
+  void ExceptionHandlerServerAttachmentAdded(
+      const base::FilePath& attachment) override;
+  void ExceptionHandlerServerAttachmentRemoved(
+      const base::FilePath& attachment) override;
 
  private:
   CrashReportDatabase* database_;  // weak
   CrashReportUploadThread* upload_thread_;  // weak
   const std::map<std::string, std::string>* process_annotations_;  // weak
-  const std::vector<base::FilePath>* attachments_;  // weak
+  std::vector<base::FilePath> attachments_;
   const base::FilePath* screenshot_;  // weak
   const bool wait_for_upload_;
   const UserStreamDataSources* user_stream_data_sources_;  // weak
