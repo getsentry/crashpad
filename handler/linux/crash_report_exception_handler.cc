@@ -111,7 +111,7 @@ CrashReportExceptionHandler::CrashReportExceptionHandler(
     : database_(database),
       upload_thread_(upload_thread),
       process_annotations_(process_annotations),
-      attachments_(attachments),
+      attachments_(*attachments),
       write_minidump_to_database_(write_minidump_to_database),
       write_minidump_to_log_(write_minidump_to_log),
       user_stream_data_sources_(user_stream_data_sources),
@@ -210,6 +210,26 @@ bool CrashReportExceptionHandler::HandleExceptionWithConnection(
   return result;
 }
 
+void CrashReportExceptionHandler::AddAttachment(
+    const base::FilePath& attachment) {
+  auto it = std::find(attachments_.begin(), attachments_.end(), attachment);
+  if (it != attachments_.end()) {
+    LOG(WARNING) << "ignoring duplicate attachment " << attachment;
+    return;
+  }
+  attachments_.push_back(attachment);
+}
+
+void CrashReportExceptionHandler::RemoveAttachment(
+    const base::FilePath& attachment) {
+  auto it = std::find(attachments_.begin(), attachments_.end(), attachment);
+  if (it == attachments_.end()) {
+    LOG(WARNING) << "ignoring non-existent attachment " << attachment;
+    return;
+  }
+  attachments_.erase(it);
+}
+
 bool CrashReportExceptionHandler::WriteMinidumpToDatabase(
     ProcessSnapshotLinux* process_snapshot,
     ProcessSnapshotSanitized* sanitized_snapshot,
@@ -252,7 +272,7 @@ bool CrashReportExceptionHandler::WriteMinidumpToDatabase(
     }
   }
 
-  for (const auto& attachment : (*attachments_)) {
+  for (const auto& attachment : attachments_) {
     FileReader file_reader;
     if (!file_reader.Open(attachment)) {
       LOG(ERROR) << "attachment " << attachment.value().c_str()

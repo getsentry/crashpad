@@ -18,6 +18,7 @@
 #include <map>
 #include <string>
 
+#include "base/files/file_path.h"
 #include "client/crash_report_database.h"
 #include "handler/crash_report_upload_thread.h"
 #include "handler/linux/exception_handler_server.h"
@@ -94,6 +95,9 @@ class CrashReportExceptionHandler : public ExceptionHandlerServer::Delegate {
       int broker_sock,
       UUID* local_report_id = nullptr) override;
 
+  void AddAttachment(const base::FilePath& attachment) override;
+  void RemoveAttachment(const base::FilePath& attachment) override;
+
  private:
   bool HandleExceptionWithConnection(
       PtraceConnection* connection,
@@ -119,7 +123,7 @@ class CrashReportExceptionHandler : public ExceptionHandlerServer::Delegate {
   CrashReportDatabase* database_;  // weak
   CrashReportUploadThread* upload_thread_;  // weak
   const std::map<std::string, std::string>* process_annotations_;  // weak
-  const std::vector<base::FilePath>* attachments_;  // weak
+  std::vector<base::FilePath> attachments_;
   bool write_minidump_to_database_;
   bool write_minidump_to_log_;
   const UserStreamDataSources* user_stream_data_sources_;  // weak
