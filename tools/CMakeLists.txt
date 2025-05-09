@@ -95,6 +95,13 @@ if(CRASHPAD_BUILD_TOOLS)
             $<$<COMPILE_LANGUAGE:CXX>:-Wno-multichar>
         )
     endif()
+    if(LINUX)
+        target_compile_definitions(crashpad_generate_dump PRIVATE
+            _FILE_OFFSET_BITS=64
+            _LARGEFILE64_SOURCE
+            _LARGEFILE_SOURCE
+        )
+    endif()
     crashpad_install_target(crashpad_generate_dump)
 
     if(APPLE)

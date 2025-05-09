@@ -143,6 +143,14 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     )
 endif()
 
+if(LINUX)
+    target_compile_definitions(crashpad_interface INTERFACE
+        _FILE_OFFSET_BITS=64
+        _LARGEFILE64_SOURCE
+        _LARGEFILE_SOURCE
+    )
+endif()
+
 add_library(crashpad::interface ALIAS crashpad_interface)
 
 add_subdirectory(compat)
