@@ -36,6 +36,16 @@ jobs:
             platform: ubuntu-22.04
             CC: clang
             CXX: clang++
+          - name: Alpine Linux (GCC + musl)
+            platform: ubuntu-latest
+            container: alpine:3.21
+            CC: gcc
+            CXX: g++
+          - name: Alpine Linux (clang + musl)
+            platform: ubuntu-latest
+            container: alpine:3.21
+            CC: clang
+            CXX: clang++
           - name: Windows (x64)
             platform: windows-latest
           - name: Windows ClangCL (x64)
@@ -59,15 +69,22 @@ jobs:
             platform: macos-latest
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.platform }}
+    container: ${{ matrix.container }}
     env:
       CMAKE_DEFINES: "${{ matrix.CMAKE_DEFINES }}"
     steps:
+      - name: Installing Alpine Linux Dependencies
+        if: ${{ contains(matrix.container, 'alpine') }}
+        run: |
+          apk update
+          apk add git bash build-base clang cmake zlib-dev curl-dev openssl-dev libunwind-dev linux-headers pkgconf
+
       - uses: actions/checkout@v4
         with:
           submodules: "recursive"
 
-      - name: Installing Linux Dependencies
-        if: ${{ runner.os == 'Linux' }}
+      - name: Installing Ubuntu Dependencies
+        if: ${{ runner.os == 'Linux' && !matrix.container }}
         run: |
           sudo apt update
           sudo apt install clang zlib1g-dev libcurl4-openssl-dev libssl-dev libunwind-dev pkg-config
