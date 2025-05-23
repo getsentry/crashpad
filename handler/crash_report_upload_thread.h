@@ -104,6 +104,16 @@ class CrashReportUploadThread : public WorkerThread::Delegate,
   //! This method may be called from any thread.
   void ReportPending(const UUID& report_uuid);
 
+  //! \brief Runs the upload on the calling thread rather than in the upload
+  //!     thread. This is only used from the exception handler to block the
+  //!     termination of the crashed process until the upload is completed.
+  //!
+  //! \param[in] report_uuid The unique identifier of the newly added pending
+  //!     report.
+  //!
+  //! This method will run on the pool thread executing the OnCrashDumpEvent
+  void ReportPendingSync(const UUID& report_uuid);
+
   // Stoppable:
 
   //! \brief Starts a dedicated upload thread, which executes ThreadMain().

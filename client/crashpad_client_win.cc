@@ -356,6 +356,7 @@ struct BackgroundHandlerStartThreadData {
       const std::vector<std::string>& arguments,
       const std::vector<base::FilePath>& attachments,
       const base::FilePath& screenshot,
+      const bool wait_for_upload,
       const std::wstring& ipc_pipe,
       ScopedFileHANDLE ipc_pipe_handle)
       : handler(handler),
@@ -367,6 +368,7 @@ struct BackgroundHandlerStartThreadData {
         arguments(arguments),
         attachments(attachments),
         screenshot(screenshot),
+        wait_for_upload(wait_for_upload),
         ipc_pipe(ipc_pipe),
         ipc_pipe_handle(std::move(ipc_pipe_handle)) {}
 
@@ -379,6 +381,7 @@ struct BackgroundHandlerStartThreadData {
   std::vector<std::string> arguments;
   std::vector<base::FilePath> attachments;
   base::FilePath screenshot;
+  bool wait_for_upload;
   std::wstring ipc_pipe;
   ScopedFileHANDLE ipc_pipe_handle;
 };
@@ -450,6 +453,10 @@ bool StartHandlerProcess(
     AppendCommandLineArgument(
         FormatArgumentString("screenshot", data->screenshot.value()),
         &command_line);
+  }
+
+  if (data->wait_for_upload) {
+      AppendCommandLineArgument(L"--wait-for-upload", &command_line);
   }
 
   ScopedKernelHANDLE this_process(
@@ -648,7 +655,6 @@ bool CrashpadClient::StartHandler(
     const std::vector<base::FilePath>& attachments,
     const base::FilePath& screenshot,
     bool wait_for_upload) {
-  (void) wait_for_upload; // unused in win (for now)
   DCHECK(ipc_pipe_.empty());
 
   // Both the pipe and the signalling events have to be created on the main
@@ -681,6 +687,7 @@ bool CrashpadClient::StartHandler(
                                                    arguments,
                                                    attachments,
                                                    screenshot,
+                                                   wait_for_upload,
                                                    ipc_pipe_,
                                                    std::move(ipc_pipe_handle));
 

@@ -269,7 +269,7 @@ struct Options {
 #if defined(SCREENSHOT_SUPPORTED)
   base::FilePath screenshot;
 #endif  // SCREENSHOT_SUPPORTED
-#if BUILDFLAG(IS_LINUX)
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_WIN)
   bool wait_for_upload = false;
 #endif
 };
@@ -650,7 +650,7 @@ int HandlerMain(int argc,
 #if BUILDFLAG(IS_ANDROID)
     kOptionWriteMinidumpToLog,
 #endif  // BUILDFLAG(IS_ANDROID)
-#if BUILDFLAG(IS_LINUX)
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_WIN)
   kOptionWaitForUpload,
 #endif
 
@@ -747,8 +747,8 @@ int HandlerMain(int argc,
 #if BUILDFLAG(IS_ANDROID)
     {"write-minidump-to-log", no_argument, nullptr, kOptionWriteMinidumpToLog},
 #endif  // BUILDFLAG(IS_ANDROID)
-#if BUILDFLAG(IS_LINUX)
-  {"wait-for-upload", optional_argument, nullptr, kOptionWaitForUpload},
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_WIN)
+  {"wait-for-upload", no_argument, nullptr, kOptionWaitForUpload},
 #endif
     {"help", no_argument, nullptr, kOptionHelp},
     {"version", no_argument, nullptr, kOptionVersion},
@@ -941,7 +941,7 @@ int HandlerMain(int argc,
         break;
       }
 #endif  // BUILDFLAG(IS_ANDROID)
-#if BUILDFLAG(IS_LINUX)
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_WIN)
       case kOptionWaitForUpload : {
         options.wait_for_upload = true;
         break;
@@ -1136,7 +1136,7 @@ int HandlerMain(int argc,
       false,
 #endif  // BUILDFLAG(IS_LINUX)
       user_stream_sources
-#if BUILDFLAG(IS_LINUX)
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_WIN)
       ,options.wait_for_upload
 #endif
   );

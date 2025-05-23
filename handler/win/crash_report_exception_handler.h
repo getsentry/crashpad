@@ -61,7 +61,8 @@ class CrashReportExceptionHandler final
       const std::map<std::string, std::string>* process_annotations,
       const std::vector<base::FilePath>* attachments,
       const base::FilePath* screenshot,
-      const UserStreamDataSources* user_stream_data_sources);
+      const UserStreamDataSources* user_stream_data_sources,
+      bool wait_for_upload);
 
   CrashReportExceptionHandler(const CrashReportExceptionHandler&) = delete;
   CrashReportExceptionHandler& operator=(const CrashReportExceptionHandler&) =
@@ -85,6 +86,7 @@ class CrashReportExceptionHandler final
   const std::map<std::string, std::string>* process_annotations_;  // weak
   const std::vector<base::FilePath>* attachments_;  // weak
   const base::FilePath* screenshot_;  // weak
+  const bool wait_for_upload_;
   const UserStreamDataSources* user_stream_data_sources_;  // weak
 };
 

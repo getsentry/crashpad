@@ -116,6 +116,11 @@ void CrashReportUploadThread::ReportPending(const UUID& report_uuid) {
     thread_.DoWorkNow();
 }
 
+void CrashReportUploadThread::ReportPendingSync(const UUID& report_uuid) {
+  known_pending_report_uuids_.PushBack(report_uuid);
+  DoWork(nullptr);
+}
+
 void CrashReportUploadThread::Start() {
   thread_.Start(
       options_.watch_pending_reports ? 0.0 : WorkerThread::kIndefiniteWait);

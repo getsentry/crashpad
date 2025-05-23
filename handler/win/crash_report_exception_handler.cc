@@ -40,12 +40,14 @@ CrashReportExceptionHandler::CrashReportExceptionHandler(
     const std::map<std::string, std::string>* process_annotations,
     const std::vector<base::FilePath>* attachments,
     const base::FilePath* screenshot,
-    const UserStreamDataSources* user_stream_data_sources)
+    const UserStreamDataSources* user_stream_data_sources,
+    const bool wait_for_upload)
     : database_(database),
       upload_thread_(upload_thread),
       process_annotations_(process_annotations),
       attachments_(attachments),
       screenshot_(screenshot),
+      wait_for_upload_(wait_for_upload),
       user_stream_data_sources_(user_stream_data_sources) {}
 
 CrashReportExceptionHandler::~CrashReportExceptionHandler() {}
@@ -160,7 +162,12 @@ unsigned int CrashReportExceptionHandler::ExceptionHandlerServerException(
     }
 
     if (upload_thread_) {
-      upload_thread_->ReportPending(uuid);
+      if (wait_for_upload_) {
+        upload_thread_->ReportPendingSync(uuid);
+      }
+      else {
+        upload_thread_->ReportPending(uuid);
+      }
     }
   }
 
