@@ -23,6 +23,8 @@ add_library(crashpad_util STATIC
     misc/address_types.h
     misc/arraysize.h
     misc/as_underlying_type.h
+    misc/attachment.cc
+    misc/attachment.h
     misc/capture_context.h
     misc/clock.h
     misc/elf_note_types.h

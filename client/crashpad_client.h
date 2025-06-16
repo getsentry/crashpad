@@ -27,6 +27,7 @@
 #include "build/build_config.h"
 #include "build/chromeos_buildflags.h"
 #include "util/file/file_io.h"
+#include "util/misc/attachment.h"
 
 #if !BUILDFLAG(IS_FUCHSIA)
 #include "util/misc/capture_context.h"
@@ -841,17 +842,17 @@ class CrashpadClient {
 #endif
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_LINUX) || DOXYGEN
-  //! \brief Adds a file to the list of files to be attached to the crash
-  //!     report.
+  //! \brief Adds an attachment to the list of attachments to be attached
+  //!     to the crash report.
   //!
-  //! \param[in] attachment The path to the file to be added.
-  void AddAttachment(const base::FilePath& attachment);
+  //! \param[in] attachment The attachment to be added.
+  void AddAttachment(const Attachment& attachment);
 
-  //! \brief Removes a file from the list of files to be attached to the crash
-  //!     report.
+  //! \brief Removes an attachment from the list of attachments to be attached
+  //!     to the crash report.
   //!
-  //! \param[in] attachment The path to the file to be removed.
-  void RemoveAttachment(const base::FilePath& attachment);
+  //! \param[in] uuid The UUID of the attachment to be removed.
+  void RemoveAttachment(const UUID& uuid);
 #endif
 
  private:
