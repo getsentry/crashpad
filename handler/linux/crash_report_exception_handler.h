@@ -26,6 +26,7 @@
 #include "util/linux/exception_handler_protocol.h"
 #include "util/linux/ptrace_connection.h"
 #include "util/misc/address_types.h"
+#include "util/misc/attachment.h"
 #include "util/misc/uuid.h"
 
 namespace crashpad {
@@ -95,8 +96,8 @@ class CrashReportExceptionHandler : public ExceptionHandlerServer::Delegate {
       int broker_sock,
       UUID* local_report_id = nullptr) override;
 
-  void AddAttachment(const base::FilePath& attachment) override;
-  void RemoveAttachment(const base::FilePath& attachment) override;
+  void AddAttachment(const Attachment& attachment) override;
+  void RemoveAttachment(const UUID& uuid) override;
 
  private:
   bool HandleExceptionWithConnection(
@@ -123,7 +124,7 @@ class CrashReportExceptionHandler : public ExceptionHandlerServer::Delegate {
   CrashReportDatabase* database_;  // weak
   CrashReportUploadThread* upload_thread_;  // weak
   const std::map<std::string, std::string>* process_annotations_;  // weak
-  std::vector<base::FilePath> attachments_;
+  std::vector<Attachment> attachments_;
   bool write_minidump_to_database_;
   bool write_minidump_to_log_;
   const UserStreamDataSources* user_stream_data_sources_;  // weak

@@ -433,11 +433,29 @@ bool ExceptionHandlerServer::ReceiveClientMessage(Event* event) {
           event->type == Event::Type::kSharedSocketMessage);
 
     case ExceptionHandlerProtocol::ClientToServerMessage::kTypeAddAttachment:
-      delegate_->AddAttachment(base::FilePath(message.attachment_info.path));
+      if (message.attachment_info.bytes == 0) {
+        delegate_->AddAttachment(
+            Attachment(base::FilePath(message.attachment_info.path),
+                       message.attachment_info.uuid));
+      } else {
+        std::vector<uint8_t> bytes(message.attachment_info.bytes);
+        if (!UnixCredentialSocket::RecvMsg(event->fd.get(),
+                                           bytes.data(),
+                                           bytes.size() * sizeof(uint8_t),
+                                           &creds)) {
+          PLOG(ERROR) << "Failed to receive attachment ("
+                      << message.attachment_info.bytes << " bytes)";
+          return false;
+        }
+        delegate_->AddAttachment(
+            Attachment(bytes,
+                       base::FilePath(message.attachment_info.path),
+                       message.attachment_info.uuid));
+      }
       return true;
 
     case ExceptionHandlerProtocol::ClientToServerMessage::kTypeRemoveAttachment:
-      delegate_->RemoveAttachment(base::FilePath(message.attachment_info.path));
+      delegate_->RemoveAttachment(message.attachment_info.uuid);
       return true;
   }
 

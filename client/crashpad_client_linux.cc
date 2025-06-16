@@ -436,14 +436,14 @@ class RequestCrashDumpHandler : public SignalHandler {
   }
 #endif
 
-  void AddAttachment(const base::FilePath& attachment) {
+  void AddAttachment(const Attachment& attachment) {
     ExceptionHandlerClient client(sock_to_handler_.get(), true);
     client.AddAttachment(attachment);
   }
 
-  void RemoveAttachment(const base::FilePath& attachment) {
+  void RemoveAttachment(const UUID& uuid) {
     ExceptionHandlerClient client(sock_to_handler_.get(), true);
-    client.RemoveAttachment(attachment);
+    client.RemoveAttachment(uuid);
   }
 
  private:
@@ -817,14 +817,14 @@ void CrashpadClient::SetCrashLoopBefore(uint64_t crash_loop_before_time) {
 }
 #endif
 
-void CrashpadClient::AddAttachment(const base::FilePath& attachment) {
+void CrashpadClient::AddAttachment(const Attachment& attachment) {
   auto signal_handler = RequestCrashDumpHandler::Get();
   signal_handler->AddAttachment(attachment);
 }
 
-void CrashpadClient::RemoveAttachment(const base::FilePath& attachment) {
+void CrashpadClient::RemoveAttachment(const UUID& uuid) {
   auto signal_handler = RequestCrashDumpHandler::Get();
-  signal_handler->RemoveAttachment(attachment);
+  signal_handler->RemoveAttachment(uuid);
 }
 
 }  // namespace crashpad

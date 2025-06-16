@@ -25,6 +25,7 @@
 #include "util/file/file_io.h"
 #include "util/linux/exception_handler_protocol.h"
 #include "util/misc/address_types.h"
+#include "util/misc/attachment.h"
 #include "util/misc/initialization_state_dcheck.h"
 #include "util/misc/uuid.h"
 
@@ -112,10 +113,10 @@ class ExceptionHandlerServer {
         UUID* local_report_id = nullptr) = 0;
 
     //! \brief Called to add an attachment to the crash report.
-    virtual void AddAttachment(const base::FilePath& attachment) = 0;
+    virtual void AddAttachment(const Attachment& attachment) = 0;
 
     //! \brief Called to remove an attachment from the crash report.
-    virtual void RemoveAttachment(const base::FilePath& attachment) = 0;
+    virtual void RemoveAttachment(const UUID& uuid) = 0;
 
     virtual ~Delegate() {}
   };

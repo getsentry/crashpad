@@ -24,6 +24,7 @@
 #include "build/build_config.h"
 #include "util/file/file_io.h"
 #include "util/misc/address_types.h"
+#include "util/misc/uuid.h"
 
 namespace crashpad {
 
@@ -62,6 +63,8 @@ class ExceptionHandlerProtocol {
 
   struct AttachmentInformation {
     char path[PATH_MAX];
+    UUID uuid;
+    size_t bytes;
   };
 
   //! \brief The signal used to indicate a crash dump is complete.

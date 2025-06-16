@@ -225,22 +225,31 @@ int ExceptionHandlerClient::WaitForCrashDumpComplete() {
   return errno;
 }
 
-void ExceptionHandlerClient::AddAttachment(const base::FilePath& attachment) {
+void ExceptionHandlerClient::AddAttachment(const Attachment& attachment) {
   ExceptionHandlerProtocol::ClientToServerMessage message;
   message.type =
       ExceptionHandlerProtocol::ClientToServerMessage::kTypeAddAttachment;
-  snprintf(
-      message.attachment_info.path, PATH_MAX, "%s", attachment.value().c_str());
+  snprintf(message.attachment_info.path,
+           PATH_MAX,
+           "%s",
+           attachment.GetPath().value().c_str());
+  message.attachment_info.uuid = attachment.GetUuid();
+  message.attachment_info.bytes = attachment.GetBytes().size();
+
   UnixCredentialSocket::SendMsg(server_sock_, &message, sizeof(message));
+
+  if (attachment.HasBytes()) {
+    const std::vector<uint8_t>& bytes = attachment.GetBytes();
+    UnixCredentialSocket::SendMsg(
+        server_sock_, bytes.data(), bytes.size() * sizeof(uint8_t));
+  }
 }
 
-void ExceptionHandlerClient::RemoveAttachment(
-    const base::FilePath& attachment) {
+void ExceptionHandlerClient::RemoveAttachment(const UUID& uuid) {
   ExceptionHandlerProtocol::ClientToServerMessage message;
   message.type =
       ExceptionHandlerProtocol::ClientToServerMessage::kTypeRemoveAttachment;
-  snprintf(
-      message.attachment_info.path, PATH_MAX, "%s", attachment.value().c_str());
+  message.attachment_info.uuid = uuid;
   UnixCredentialSocket::SendMsg(server_sock_, &message, sizeof(message));
 }
 

@@ -111,12 +111,15 @@ CrashReportExceptionHandler::CrashReportExceptionHandler(
     : database_(database),
       upload_thread_(upload_thread),
       process_annotations_(process_annotations),
-      attachments_(*attachments),
       write_minidump_to_database_(write_minidump_to_database),
       write_minidump_to_log_(write_minidump_to_log),
       user_stream_data_sources_(user_stream_data_sources),
-      wait_for_upload_(wait_for_upload){
+      wait_for_upload_(wait_for_upload) {
   DCHECK(write_minidump_to_database_ | write_minidump_to_log_);
+  attachments_.reserve(attachments->size());
+  for (const auto& attachment : *attachments) {
+    attachments_.emplace_back(Attachment::FromPath(attachment));
+  }
 }
 
 CrashReportExceptionHandler::~CrashReportExceptionHandler() = default;
@@ -210,21 +213,25 @@ bool CrashReportExceptionHandler::HandleExceptionWithConnection(
   return result;
 }
 
-void CrashReportExceptionHandler::AddAttachment(
-    const base::FilePath& attachment) {
+void CrashReportExceptionHandler::AddAttachment(const Attachment& attachment) {
   auto it = std::find(attachments_.begin(), attachments_.end(), attachment);
   if (it != attachments_.end()) {
-    LOG(WARNING) << "ignoring duplicate attachment " << attachment;
+    LOG(WARNING) << "ignoring duplicate attachment "
+                 << attachment.GetUuid().ToString() << " ("
+                 << attachment.GetPath() << ")";
     return;
   }
   attachments_.push_back(attachment);
 }
 
-void CrashReportExceptionHandler::RemoveAttachment(
-    const base::FilePath& attachment) {
-  auto it = std::find(attachments_.begin(), attachments_.end(), attachment);
+void CrashReportExceptionHandler::RemoveAttachment(const UUID& uuid) {
+  auto it = std::find_if(attachments_.begin(),
+                         attachments_.end(),
+                         [uuid](const Attachment& attachment) {
+                           return attachment.GetUuid() == uuid;
+                         });
   if (it == attachments_.end()) {
-    LOG(WARNING) << "ignoring non-existent attachment " << attachment;
+    LOG(WARNING) << "ignoring non-existent attachment " << uuid.ToString();
     return;
   }
   attachments_.erase(it);
@@ -273,14 +280,7 @@ bool CrashReportExceptionHandler::WriteMinidumpToDatabase(
   }
 
   for (const auto& attachment : attachments_) {
-    FileReader file_reader;
-    if (!file_reader.Open(attachment)) {
-      LOG(ERROR) << "attachment " << attachment.value().c_str()
-                 << " couldn't be opened, skipping";
-      continue;
-    }
-
-    base::FilePath filename = attachment.BaseName();
+    base::FilePath filename = attachment.GetPath().BaseName();
     FileWriter* file_writer = new_report->AddAttachment(filename.value());
     if (file_writer == nullptr) {
       LOG(ERROR) << "attachment " << filename.value().c_str()
@@ -288,7 +288,18 @@ bool CrashReportExceptionHandler::WriteMinidumpToDatabase(
       continue;
     }
 
-    CopyFileContent(&file_reader, file_writer);
+    if (attachment.HasBytes()) {
+      const std::vector<uint8_t>& bytes = attachment.GetBytes();
+      file_writer->Write(bytes.data(), bytes.size() * sizeof(uint8_t));
+    } else {
+      FileReader file_reader;
+      if (!file_reader.Open(attachment.GetPath())) {
+        LOG(ERROR) << "attachment " << attachment.GetPath().value().c_str()
+                   << " couldn't be opened, skipping";
+        continue;
+      }
+      CopyFileContent(&file_reader, file_writer);
+    }
   }
 
   UUID uuid;

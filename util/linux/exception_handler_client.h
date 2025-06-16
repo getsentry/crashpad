@@ -19,6 +19,7 @@
 #include <sys/types.h>
 
 #include "util/linux/exception_handler_protocol.h"
+#include "util/misc/attachment.h"
 
 namespace crashpad {
 
@@ -69,10 +70,10 @@ class ExceptionHandlerClient {
   void SetCanSetPtracer(bool can_set_ptracer);
 
   //! \brief Adds an attachment to the crash report.
-  void AddAttachment(const base::FilePath& attachment);
+  void AddAttachment(const Attachment& attachment);
 
   //! \brief Removes an attachment from the crash report.
-  void RemoveAttachment(const base::FilePath& attachment);
+  void RemoveAttachment(const UUID& uuid);
 
  private:
   int SendCrashDumpRequest(
