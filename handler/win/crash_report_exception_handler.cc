@@ -45,10 +45,14 @@ CrashReportExceptionHandler::CrashReportExceptionHandler(
     : database_(database),
       upload_thread_(upload_thread),
       process_annotations_(process_annotations),
-      attachments_(*attachments),
       screenshot_(screenshot),
       wait_for_upload_(wait_for_upload),
-      user_stream_data_sources_(user_stream_data_sources) {}
+      user_stream_data_sources_(user_stream_data_sources) {
+  attachments_.reserve(attachments->size());
+  for (const auto& attachment : *attachments) {
+    attachments_.emplace_back(Attachment::FromPath(attachment));
+  }
+}
 
 CrashReportExceptionHandler::~CrashReportExceptionHandler() {}
 
@@ -118,14 +122,7 @@ unsigned int CrashReportExceptionHandler::ExceptionHandlerServerException(
     }
 
     for (const auto& attachment : attachments_) {
-      FileReader file_reader;
-      if (!file_reader.Open(attachment)) {
-        LOG(ERROR) << "attachment " << attachment
-                   << " couldn't be opened, skipping";
-        continue;
-      }
-
-      base::FilePath filename = attachment.BaseName();
+      base::FilePath filename = attachment.GetPath().BaseName();
       FileWriter* file_writer =
           new_report->AddAttachment(base::WideToUTF8(filename.value()));
       if (file_writer == nullptr) {
@@ -134,7 +131,18 @@ unsigned int CrashReportExceptionHandler::ExceptionHandlerServerException(
         continue;
       }
 
-      CopyFileContent(&file_reader, file_writer);
+      if (attachment.HasBytes()) {
+        const std::vector<uint8_t>& bytes = attachment.GetBytes();
+        file_writer->Write(bytes.data(), bytes.size() * sizeof(uint8_t));
+      } else {
+        FileReader file_reader;
+        if (!file_reader.Open(attachment.GetPath())) {
+          LOG(ERROR) << "attachment " << attachment.GetPath().value().c_str()
+                     << " couldn't be opened, skipping";
+          continue;
+        }
+        CopyFileContent(&file_reader, file_writer);
+      }
     }
 
     if (screenshot_ && !screenshot_->empty()) {
@@ -176,20 +184,26 @@ unsigned int CrashReportExceptionHandler::ExceptionHandlerServerException(
 }
 
 void CrashReportExceptionHandler::ExceptionHandlerServerAttachmentAdded(
-    const base::FilePath& attachment) {
+    const Attachment& attachment) {
   auto it = std::find(attachments_.begin(), attachments_.end(), attachment);
   if (it != attachments_.end()) {
-    LOG(WARNING) << "ignoring duplicate attachment " << attachment;
+    LOG(WARNING) << "ignoring duplicate attachment "
+                 << attachment.GetUuid().ToString() << " ("
+                 << attachment.GetPath() << ")";
     return;
   }
   attachments_.push_back(attachment);
 }
 
 void CrashReportExceptionHandler::ExceptionHandlerServerAttachmentRemoved(
-    const base::FilePath& attachment) {
-  auto it = std::find(attachments_.begin(), attachments_.end(), attachment);
+    const UUID& uuid) {
+  auto it = std::find_if(attachments_.begin(),
+                         attachments_.end(),
+                         [uuid](const Attachment& attachment) {
+                           return attachment.GetUuid() == uuid;
+                         });
   if (it == attachments_.end()) {
-    LOG(WARNING) << "ignoring non-existent attachment " << attachment;
+    LOG(WARNING) << "ignoring non-existent attachment " << uuid.ToString();
     return;
   }
   attachments_.erase(it);

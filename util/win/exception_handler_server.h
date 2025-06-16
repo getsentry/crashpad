@@ -20,6 +20,7 @@
 
 #include "base/synchronization/lock.h"
 #include "util/file/file_io.h"
+#include "util/misc/attachment.h"
 #include "util/win/address_types.h"
 #include "util/win/initial_client_data.h"
 #include "util/win/scoped_handle.h"
@@ -61,16 +62,14 @@ class ExceptionHandlerServer {
     //! \brief Called when the server has received a request to add an
     //! attachment.
     //!
-    //! \param[in] attachment The path of the attachment.
-    virtual void ExceptionHandlerServerAttachmentAdded(
-        const base::FilePath& attachment) = 0;
+    //! \param[in] attachment The attachment.
+    virtual void ExceptionHandlerServerAttachmentAdded(const Attachment& attachment) = 0;
 
     //! \brief Called when the server has received a request to remove an
     //! attachment.
     //!
-    //! \param[in] attachment The path of the attachment.
-    virtual void ExceptionHandlerServerAttachmentRemoved(
-        const base::FilePath& attachment) = 0;
+    //! \param[in] uuid The uuid of the attachment.
+    virtual void ExceptionHandlerServerAttachmentRemoved(const UUID& uuid) = 0;
 
    protected:
     ~Delegate();

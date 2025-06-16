@@ -457,18 +457,33 @@ bool ExceptionHandlerServer::ServiceClientConnection(
 
     case ClientToServerMessage::kAddAttachment: {
       ServerToClientMessage shutdown_response = {};
-      service_context.delegate()->ExceptionHandlerServerAttachmentAdded(
-          base::FilePath(message.attachment.path));
       LoggingWriteFile(service_context.pipe(),
                        &shutdown_response,
                        sizeof(shutdown_response));
+      if (message.attachment.bytes == 0) {
+        service_context.delegate()->ExceptionHandlerServerAttachmentAdded(
+            Attachment(base::FilePath(message.attachment.path), 
+                       message.attachment.uuid));
+      } else {
+        std::vector<uint8_t> bytes(message.attachment.bytes);
+        if (!LoggingReadFileExactly(
+                service_context.pipe(), bytes.data(), bytes.size())) {
+          PLOG(ERROR) << "Failed to receive attachment ("
+                      << message.attachment.bytes << " bytes)";
+        } else {
+          service_context.delegate()->ExceptionHandlerServerAttachmentAdded(
+              Attachment(bytes,
+                         base::FilePath(message.attachment.path),
+                         message.attachment.uuid));
+        }
+      }
       return false;
     }
 
     case ClientToServerMessage::kRemoveAttachment: {
       ServerToClientMessage shutdown_response = {};
       service_context.delegate()->ExceptionHandlerServerAttachmentRemoved(
-          base::FilePath(message.attachment.path));
+          message.attachment.uuid);
       LoggingWriteFile(service_context.pipe(),
                        &shutdown_response,
                        sizeof(shutdown_response));

@@ -19,6 +19,7 @@
 #include <stdint.h>
 
 #include "util/win/address_types.h"
+#include "util/misc/uuid.h"
 
 namespace crashpad {
 
@@ -120,6 +121,10 @@ struct ShutdownRequest {
 struct AttachmentRequest {
   //! \brief The path of the attachment.
   wchar_t path[MAX_PATH];
+  //! \brief The size of a memory attachment, in bytes.
+  size_t bytes;
+  //! \brief The UUID of the attachment.
+  UUID uuid;
 };
 
 //! \brief The message passed from client to server by

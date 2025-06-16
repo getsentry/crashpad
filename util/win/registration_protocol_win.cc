@@ -75,6 +75,13 @@ void* GetSecurityDescriptorWithUser(const wchar_t* sddl_string, size_t* size) {
 bool SendToCrashHandlerServer(const std::wstring& pipe_name,
                               const ClientToServerMessage& message,
                               ServerToClientMessage* response) {
+  return SendToCrashHandlerServerEx(pipe_name, message, nullptr, 0, response);
+}
+
+bool SendToCrashHandlerServerEx(const std::wstring& pipe_name,
+                                const ClientToServerMessage& message,
+                                const void* payload, size_t payload_size,
+                                ServerToClientMessage* response) {
   // Retry CreateFile() in a loop. If the handler isn’t actively waiting in
   // ConnectNamedPipe() on a pipe instance because it’s busy doing something
   // else, CreateFile() will fail with ERROR_PIPE_BUSY. WaitNamedPipe() waits
@@ -137,6 +144,14 @@ bool SendToCrashHandlerServer(const std::wstring& pipe_name,
                  << ", observed " << bytes_read;
       return false;
     }
+
+    if (payload) {
+      if (!WriteFile(pipe.get(), payload, static_cast<DWORD>(payload_size))) {
+        PLOG(ERROR) << "WriteFile: payload";
+        return false;
+      }
+    }
+
     return true;
   }
 }

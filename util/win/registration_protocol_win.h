@@ -35,6 +35,11 @@ namespace crashpad {
 bool SendToCrashHandlerServer(const std::wstring& pipe_name,
                               const ClientToServerMessage& message,
                               ServerToClientMessage* response);
+bool SendToCrashHandlerServerEx(const std::wstring& pipe_name,
+                                const ClientToServerMessage& message,
+                                const void* payload,
+                                size_t payload_size,
+                                ServerToClientMessage* response);
 
 //! \brief Wraps CreateNamedPipe() to create a single named pipe instance.
 //!

@@ -1183,20 +1183,26 @@ void CrashpadClient::SetFirstChanceExceptionHandler(
   first_chance_handler_ = handler;
 }
 
-void CrashpadClient::AddAttachment(const base::FilePath& attachment) {
+void CrashpadClient::AddAttachment(const Attachment& attachment) {
   ClientToServerMessage message = {};
   message.type = ClientToServerMessage::kAddAttachment;
   swprintf_s(
-      message.attachment.path, MAX_PATH, L"%ls", attachment.value().c_str());
+      message.attachment.path, MAX_PATH, L"%ls", attachment.GetPath().value().c_str());
+  message.attachment.uuid = attachment.GetUuid();
+  message.attachment.bytes = attachment.GetBytes().size();
   ServerToClientMessage response = {};
-  SendToCrashHandlerServer(ipc_pipe_, message, &response);
+  const std::vector<uint8_t>& bytes = attachment.GetBytes();
+  SendToCrashHandlerServerEx(ipc_pipe_,
+                              message,
+                              bytes.data(),
+                              bytes.size(),
+                              &response);
 }
 
-void CrashpadClient::RemoveAttachment(const base::FilePath& attachment) {
+void CrashpadClient::RemoveAttachment(const UUID& uuid) {
   ClientToServerMessage message = {};
   message.type = ClientToServerMessage::kRemoveAttachment;
-  swprintf_s(
-      message.attachment.path, MAX_PATH, L"%ls", attachment.value().c_str());
+  message.attachment.uuid = uuid;
   ServerToClientMessage response = {};
   SendToCrashHandlerServer(ipc_pipe_, message, &response);
 }
