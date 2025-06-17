@@ -397,6 +397,19 @@ endif()
 # Copied from: https://github.com/qedsoftware/crashpad/blob/3583c50a6575857abcf140f6ea3b8d11390205b3/util/CMakeLists.txt#L196-L233
 if(APPLE)
     if(NOT IOS)
+        if(NOT CMAKE_OSX_SYSROOT)
+            # In CMake 4.0, CMAKE_OSX_SYSROOT defaults to empty unless SDKROOT is set:
+            # https://cmake.org/cmake/help/latest/variable/CMAKE_OSX_SYSROOT.html
+            execute_process(
+                COMMAND xcrun --sdk macosx --show-sdk-path
+                RESULT_VARIABLE CMAKE_OSX_SYSROOT_RESULT
+                OUTPUT_VARIABLE CMAKE_OSX_SYSROOT
+                OUTPUT_STRIP_TRAILING_WHITESPACE
+            )
+            if(NOT CMAKE_OSX_SYSROOT_RESULT EQUAL 0)
+                message(FATAL_ERROR "Failed to resolve CMAKE_OSX_SYSROOT. Please specify SDKROOT in the environment.")
+            endif()
+        endif()
         set(def_relative_files "exc.defs" "mach_exc.defs" "notify.defs")
         set(input_files "${CMAKE_CURRENT_LIST_DIR}/mach/child_port.defs")
     else()
@@ -407,8 +420,6 @@ if(APPLE)
         )
     endif()
     foreach(x ${def_relative_files})
-        # CMAKE_OSX_SYSROOT may be empty (e.g. for Makefile generators),
-        # in this case files will be taken from root.
         set(full_path "${CMAKE_OSX_SYSROOT}/usr/include/mach/${x}")
         if(NOT EXISTS "${full_path}")
             message(FATAL_ERROR "File not found: ${full_path}")
