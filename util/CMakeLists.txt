@@ -396,23 +396,31 @@ endif()
 
 # Copied from: https://github.com/qedsoftware/crashpad/blob/3583c50a6575857abcf140f6ea3b8d11390205b3/util/CMakeLists.txt#L196-L233
 if(APPLE)
-    if(NOT IOS)
+    function(check_and_fallback_sdk_path SDK_NAME)
         if(NOT CMAKE_OSX_SYSROOT)
-            # In CMake 4.0, CMAKE_OSX_SYSROOT defaults to empty unless SDKROOT is set:
-            # https://cmake.org/cmake/help/latest/variable/CMAKE_OSX_SYSROOT.html
+            message("Empty CMAKE_OSX_SYSROOT. Please specify SDKROOT=${SDK_NAME} in the environment.")
+            message("Falling back to searching SDK path for `${SDK_NAME}` via `xcrun`.")
             execute_process(
-                COMMAND xcrun --sdk macosx --show-sdk-path
-                RESULT_VARIABLE CMAKE_OSX_SYSROOT_RESULT
-                OUTPUT_VARIABLE CMAKE_OSX_SYSROOT
+                COMMAND xcrun --sdk ${SDK_NAME} --show-sdk-path
+                RESULT_VARIABLE XCRUN_RESULT
+                OUTPUT_VARIABLE SDK_PATH
                 OUTPUT_STRIP_TRAILING_WHITESPACE
             )
-            if(NOT CMAKE_OSX_SYSROOT_RESULT EQUAL 0)
-                message(FATAL_ERROR "Failed to resolve CMAKE_OSX_SYSROOT. Please specify SDKROOT in the environment.")
+
+            if(NOT XCRUN_RESULT EQUAL 0)
+                message(FATAL_ERROR "Can't find ${SDK_NAME} SDK. `xcrun` failed with ${XCRUN_RESULT}.")
+            else()
+                message("Setting CMAKE_OSX_SYSROOT=${SDK_PATH}.")
+                set(CMAKE_OSX_SYSROOT "${SDK_PATH}" PARENT_SCOPE)
             endif()
         endif()
+    endfunction()
+    if(NOT IOS)
+        check_and_fallback_sdk_path(macosx)
         set(def_relative_files "exc.defs" "mach_exc.defs" "notify.defs")
         set(input_files "${CMAKE_CURRENT_LIST_DIR}/mach/child_port.defs")
     else()
+        check_and_fallback_sdk_path(iphoneos)
         set(def_relative_files "")
         set(input_files
             "${CMAKE_CURRENT_LIST_DIR}/../third_party/xnu/osfmk/mach/exc.defs"
