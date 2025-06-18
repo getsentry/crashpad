@@ -1183,13 +1183,14 @@ void CrashpadClient::SetFirstChanceExceptionHandler(
   first_chance_handler_ = handler;
 }
 
-void CrashpadClient::AddAttachment(const base::FilePath& attachment) {
+base::FilePath CrashpadClient::AddAttachment(const base::FilePath& attachment) {
+  base::FilePath path = EnsureUniqueFile(attachment);
   ClientToServerMessage message = {};
   message.type = ClientToServerMessage::kAddAttachment;
-  swprintf_s(
-      message.attachment.path, MAX_PATH, L"%ls", attachment.value().c_str());
+  swprintf_s(message.attachment.path, MAX_PATH, L"%ls", path.value().c_str());
   ServerToClientMessage response = {};
   SendToCrashHandlerServer(ipc_pipe_, message, &response);
+  return path;
 }
 
 void CrashpadClient::RemoveAttachment(const base::FilePath& attachment) {

@@ -13,6 +13,9 @@
 // limitations under the License.
 
 #include "util/file/file_helper.h"
+#include "util/file/filesystem.h"
+
+#include <climits>
 
 namespace crashpad {
 
@@ -29,6 +32,31 @@ void CopyFileContent(FileReaderInterface* file_reader,
       break;
     }
   } while (read_result > 0);
+}
+
+base::FilePath EnsureUniqueFile(const base::FilePath& path) {
+  base::FilePath unique = path;
+  if (IsRegularFile(unique)) {
+    // "filename.ext" exists -> find next available "filename-N.ext"
+    base::FilePath dir = path.DirName();
+    // double-removal to support common double extensions like ".tar.gz"
+    base::FilePath basename =
+        path.BaseName().RemoveFinalExtension().RemoveFinalExtension();
+    base::FilePath::StringType extension =
+        path.RemoveFinalExtension().FinalExtension() + path.FinalExtension();
+    int n = 1;
+    do {
+#if BUILDFLAG(IS_WIN)
+      base::FilePath::StringType ns = std::to_wstring(n);
+#else
+      base::FilePath::StringType ns = std::to_string(n);
+#endif
+      base::FilePath::StringType filename =
+          basename.value() + FILE_PATH_LITERAL("-") + ns + extension;
+      unique = dir.Append(filename);
+    } while (IsRegularFile(unique) && ++n < PATH_MAX);
+  }
+  return unique;
 }
 
 }  // namespace crashpad
