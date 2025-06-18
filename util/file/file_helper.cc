@@ -15,8 +15,6 @@
 #include "util/file/file_helper.h"
 #include "util/file/filesystem.h"
 
-#include <climits>
-
 namespace crashpad {
 
 void CopyFileContent(FileReaderInterface* file_reader,
@@ -54,7 +52,7 @@ base::FilePath EnsureUniqueFile(const base::FilePath& path) {
       base::FilePath::StringType filename =
           basename.value() + FILE_PATH_LITERAL("-") + ns + extension;
       unique = dir.Append(filename);
-    } while (IsRegularFile(unique) && ++n < PATH_MAX);
+    } while (IsRegularFile(unique) && ++n < 4096);
   }
   return unique;
 }
