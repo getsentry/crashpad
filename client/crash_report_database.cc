@@ -41,15 +41,15 @@ std::string FixAttachmentName(std::string name) {
 // where N is a number starting from 1.
 base::FilePath EnsureUniqueFile(const base::FilePath& dir,
                                 const base::FilePath::StringType& filename) {
-  base::FilePath path = dir.Append(filename);
+  const base::FilePath path = dir.Append(filename);
   if (!IsRegularFile(path)) {
     return path;
   }
 
   // support common double extensions like ".tar.gz"
-  base::FilePath basename =
+  const base::FilePath basename =
       path.BaseName().RemoveFinalExtension().RemoveFinalExtension();
-  base::FilePath::StringType extension =
+  const base::FilePath::StringType extension =
       path.RemoveFinalExtension().FinalExtension() + path.FinalExtension();
 
   // find the next available "filename-N.ext"
