@@ -68,7 +68,8 @@ base::FilePath EnsureUniqueFile(const base::FilePath& dir,
   } while (IsRegularFile(unique) && ++n < max_n);
 
   if (n >= max_n) {
-    LOG(ERROR) << "failed to find a unique file name for " << filename;
+    LOG(ERROR) << "failed to find a unique file name for "
+               << path.BaseName().value();
     return path;
   }
 
