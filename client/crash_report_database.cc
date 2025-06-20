@@ -33,7 +33,7 @@ std::string FixAttachmentName(std::string name) {
   { 
       return c != '_' && c != '-' && c != '.' && !isalnum(c);
   }, '_');
-
+  
   return name;
 }
 
