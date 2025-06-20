@@ -37,7 +37,6 @@
 #include "build/chromeos_buildflags.h"
 #include "client/client_argv_handling.h"
 #include "third_party/lss/lss.h"
-#include "util/file/file_helper.h"
 #include "util/file/file_io.h"
 #include "util/file/filesystem.h"
 #include "util/linux/exception_handler_client.h"
@@ -818,11 +817,9 @@ void CrashpadClient::SetCrashLoopBefore(uint64_t crash_loop_before_time) {
 }
 #endif
 
-base::FilePath CrashpadClient::AddAttachment(const base::FilePath& attachment) {
-  base::FilePath path = EnsureUniqueFile(attachment);
+void CrashpadClient::AddAttachment(const base::FilePath& attachment) {
   auto signal_handler = RequestCrashDumpHandler::Get();
-  signal_handler->AddAttachment(path);
-  return path;
+  signal_handler->AddAttachment(attachment);
 }
 
 void CrashpadClient::RemoveAttachment(const base::FilePath& attachment) {

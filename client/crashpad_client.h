@@ -845,9 +845,7 @@ class CrashpadClient {
   //!     report.
   //!
   //! \param[in] attachment The path to the file to be added.
-  //! \return The path to the file that was added. This may be different from
-  //! the input path if the file was not unique.
-  base::FilePath AddAttachment(const base::FilePath& attachment);
+  void AddAttachment(const base::FilePath& attachment);
 
   //! \brief Removes a file from the list of files to be attached to the crash
   //!     report.

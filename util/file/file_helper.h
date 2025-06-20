@@ -15,7 +15,6 @@
 #ifndef CRASHPAD_UTIL_FILE_FILE_HELPER_H_
 #define CRASHPAD_UTIL_FILE_FILE_HELPER_H_
 
-#include "base/files/file_path.h"
 #include "util/file/file_reader.h"
 #include "util/file/file_writer.h"
 
@@ -24,12 +23,6 @@ namespace crashpad {
 //! \brief Copy the file content from file_reader to file_writer
 void CopyFileContent(FileReaderInterface* file_reader,
                      FileWriterInterface* file_writer);
-
-//! \brief Ensure that the given file path is unique.
-//
-// If the file exists, "-N" is appended to the base name before the extension,
-// where N is a number starting from 1.
-base::FilePath EnsureUniqueFile(const base::FilePath& path);
 
 }  // namespace crashpad
 

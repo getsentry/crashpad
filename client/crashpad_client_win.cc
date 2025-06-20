@@ -32,7 +32,6 @@
 #include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/synchronization/lock.h"
-#include "util/file/file_helper.h"
 #include "util/file/file_io.h"
 #include "util/misc/capture_context.h"
 #include "util/misc/from_pointer_cast.h"
@@ -1184,14 +1183,13 @@ void CrashpadClient::SetFirstChanceExceptionHandler(
   first_chance_handler_ = handler;
 }
 
-base::FilePath CrashpadClient::AddAttachment(const base::FilePath& attachment) {
-  base::FilePath path = EnsureUniqueFile(attachment);
+void CrashpadClient::AddAttachment(const base::FilePath& attachment) {
   ClientToServerMessage message = {};
   message.type = ClientToServerMessage::kAddAttachment;
-  swprintf_s(message.attachment.path, MAX_PATH, L"%ls", path.value().c_str());
+  swprintf_s(
+      message.attachment.path, MAX_PATH, L"%ls", attachment.value().c_str());
   ServerToClientMessage response = {};
   SendToCrashHandlerServer(ipc_pipe_, message, &response);
-  return path;
 }
 
 void CrashpadClient::RemoveAttachment(const base::FilePath& attachment) {
