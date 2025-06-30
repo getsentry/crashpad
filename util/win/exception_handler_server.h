@@ -72,6 +72,10 @@ class ExceptionHandlerServer {
     virtual void ExceptionHandlerServerAttachmentRemoved(
         const base::FilePath& attachment) = 0;
 
+    //! \brief Called when the server has received a request to clear
+    //! attachments.
+    virtual void ExceptionHandlerServerAttachmentsCleared() = 0;
+
    protected:
     ~Delegate();
   };

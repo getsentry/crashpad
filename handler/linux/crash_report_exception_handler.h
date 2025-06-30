@@ -97,6 +97,7 @@ class CrashReportExceptionHandler : public ExceptionHandlerServer::Delegate {
 
   void AddAttachment(const base::FilePath& attachment) override;
   void RemoveAttachment(const base::FilePath& attachment) override;
+  void ClearAttachments() override;
 
  private:
   bool HandleExceptionWithConnection(

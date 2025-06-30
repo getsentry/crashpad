@@ -852,6 +852,9 @@ class CrashpadClient {
   //!
   //! \param[in] attachment The path to the file to be removed.
   void RemoveAttachment(const base::FilePath& attachment);
+
+  //! \brief Clears the list of files to be attached to the crash report.
+  void ClearAttachments();
 #endif
 
  private:

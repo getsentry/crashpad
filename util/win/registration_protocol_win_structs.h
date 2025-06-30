@@ -139,6 +139,9 @@ struct ClientToServerMessage {
     //! \brief For AttachmentRequest.
     kRemoveAttachment,
 
+    //! \brief For AttachmentRequest.
+    kClearAttachments,
+
     //! \brief An empty message sent by the initial client in asynchronous mode.
     //!     No data is required, this just confirms that the server is ready to
     //!     accept client registrations.

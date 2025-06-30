@@ -74,6 +74,9 @@ class ExceptionHandlerClient {
   //! \brief Removes an attachment from the crash report.
   void RemoveAttachment(const base::FilePath& attachment);
 
+  //! \brief Clears all attachments from the crash report.
+  void ClearAttachments();
+
  private:
   int SendCrashDumpRequest(
       const ExceptionHandlerProtocol::ClientInformation& info,

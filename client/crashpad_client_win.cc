@@ -1201,4 +1201,11 @@ void CrashpadClient::RemoveAttachment(const base::FilePath& attachment) {
   SendToCrashHandlerServer(ipc_pipe_, message, &response);
 }
 
+void CrashpadClient::ClearAttachments() {
+  ClientToServerMessage message = {};
+  message.type = ClientToServerMessage::kClearAttachments;
+  ServerToClientMessage response = {};
+  SendToCrashHandlerServer(ipc_pipe_, message, &response);
+}
+
 }  // namespace crashpad

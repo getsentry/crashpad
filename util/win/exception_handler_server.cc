@@ -475,6 +475,15 @@ bool ExceptionHandlerServer::ServiceClientConnection(
       return false;
     }
 
+    case ClientToServerMessage::kClearAttachments: {
+      ServerToClientMessage shutdown_response = {};
+      service_context.delegate()->ExceptionHandlerServerAttachmentsCleared();
+      LoggingWriteFile(service_context.pipe(),
+                       &shutdown_response,
+                       sizeof(shutdown_response));
+      return false;
+    }
+
     default:
       LOG(ERROR) << "unhandled message type: " << message.type;
       return false;

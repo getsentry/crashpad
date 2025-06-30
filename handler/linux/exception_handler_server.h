@@ -117,6 +117,9 @@ class ExceptionHandlerServer {
     //! \brief Called to remove an attachment from the crash report.
     virtual void RemoveAttachment(const base::FilePath& attachment) = 0;
 
+    //! \brief Called to clear all attachments from the crash report.
+    virtual void ClearAttachments() = 0;
+
     virtual ~Delegate() {}
   };
 

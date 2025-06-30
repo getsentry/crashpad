@@ -230,6 +230,10 @@ void CrashReportExceptionHandler::RemoveAttachment(
   attachments_.erase(it);
 }
 
+void CrashReportExceptionHandler::ClearAttachments() {
+  attachments_.clear();
+}
+
 bool CrashReportExceptionHandler::WriteMinidumpToDatabase(
     ProcessSnapshotLinux* process_snapshot,
     ProcessSnapshotSanitized* sanitized_snapshot,

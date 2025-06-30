@@ -83,6 +83,7 @@ class CrashReportExceptionHandler final
       const base::FilePath& attachment) override;
   void ExceptionHandlerServerAttachmentRemoved(
       const base::FilePath& attachment) override;
+  void ExceptionHandlerServerAttachmentsCleared() override;
 
  private:
   CrashReportDatabase* database_;  // weak

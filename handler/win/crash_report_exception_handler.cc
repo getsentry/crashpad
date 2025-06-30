@@ -195,4 +195,8 @@ void CrashReportExceptionHandler::ExceptionHandlerServerAttachmentRemoved(
   attachments_.erase(it);
 }
 
+void CrashReportExceptionHandler::ExceptionHandlerServerAttachmentsCleared() {
+  attachments_.clear();
+}
+
 }  // namespace crashpad

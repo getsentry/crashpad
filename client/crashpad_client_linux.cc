@@ -446,6 +446,11 @@ class RequestCrashDumpHandler : public SignalHandler {
     client.RemoveAttachment(attachment);
   }
 
+  void ClearAttachments() {
+    ExceptionHandlerClient client(sock_to_handler_.get(), true);
+    client.ClearAttachments();
+  }
+
  private:
   RequestCrashDumpHandler() = default;
 
@@ -825,6 +830,11 @@ void CrashpadClient::AddAttachment(const base::FilePath& attachment) {
 void CrashpadClient::RemoveAttachment(const base::FilePath& attachment) {
   auto signal_handler = RequestCrashDumpHandler::Get();
   signal_handler->RemoveAttachment(attachment);
+}
+
+void CrashpadClient::ClearAttachments() {
+  auto signal_handler = RequestCrashDumpHandler::Get();
+  signal_handler->ClearAttachments();
 }
 
 }  // namespace crashpad
