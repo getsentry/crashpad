@@ -230,15 +230,25 @@ kern_return_t CrashReportExceptionHandler::CatchMachException(
 
       feedback_writer.Close();
 
-      SpawnSubprocess(
-          {
-              feedback_handler_->value(),
-              feedback_path_->value(),
-          },
-          nullptr,
-          0,
-          !feedback_handler_->IsAbsolute(),
-          nullptr);
+      bool use_path = true;
+      std::vector<std::string> argv;
+      if (feedback_handler_->FinalExtension() == ".app") {
+        argv = {
+            "open",
+            "-a",
+            feedback_handler_->value(),
+            "--args",
+            feedback_path_->value(),
+        };
+      } else {
+        argv = {
+            feedback_handler_->value(),
+            feedback_path_->value(),
+        };
+        use_path = !feedback_handler_->IsAbsolute();
+      }
+
+      SpawnSubprocess(argv, nullptr, 0, use_path, nullptr);
     }
 
     UUID uuid;
