@@ -357,6 +357,8 @@ struct BackgroundHandlerStartThreadData {
       const std::vector<base::FilePath>& attachments,
       const base::FilePath& screenshot,
       const bool wait_for_upload,
+      const base::FilePath& feedback_handler,
+      const base::FilePath& feedback_path,
       const std::wstring& ipc_pipe,
       ScopedFileHANDLE ipc_pipe_handle)
       : handler(handler),
@@ -369,6 +371,8 @@ struct BackgroundHandlerStartThreadData {
         attachments(attachments),
         screenshot(screenshot),
         wait_for_upload(wait_for_upload),
+        feedback_handler(feedback_handler),
+        feedback_path(feedback_path),
         ipc_pipe(ipc_pipe),
         ipc_pipe_handle(std::move(ipc_pipe_handle)) {}
 
@@ -382,6 +386,8 @@ struct BackgroundHandlerStartThreadData {
   std::vector<base::FilePath> attachments;
   base::FilePath screenshot;
   bool wait_for_upload;
+  base::FilePath feedback_handler;
+  base::FilePath feedback_path;
   std::wstring ipc_pipe;
   ScopedFileHANDLE ipc_pipe_handle;
 };
@@ -457,6 +463,18 @@ bool StartHandlerProcess(
 
   if (data->wait_for_upload) {
       AppendCommandLineArgument(L"--wait-for-upload", &command_line);
+  }
+
+  if (!data->feedback_handler.empty()) {
+    AppendCommandLineArgument(
+        FormatArgumentString("feedback-handler",
+                             data->feedback_handler.value()),
+        &command_line);
+  }
+  if (!data->feedback_path.empty()) {
+    AppendCommandLineArgument(
+        FormatArgumentString("feedback-path", data->feedback_path.value()),
+        &command_line);
   }
 
   ScopedKernelHANDLE this_process(
@@ -654,7 +672,9 @@ bool CrashpadClient::StartHandler(
     bool asynchronous_start,
     const std::vector<base::FilePath>& attachments,
     const base::FilePath& screenshot,
-    bool wait_for_upload) {
+    bool wait_for_upload,
+    const base::FilePath& feedback_handler,
+    const base::FilePath& feedback_path) {
   DCHECK(ipc_pipe_.empty());
 
   // Both the pipe and the signalling events have to be created on the main
@@ -688,6 +708,8 @@ bool CrashpadClient::StartHandler(
                                                    attachments,
                                                    screenshot,
                                                    wait_for_upload,
+                                                   feedback_handler,
+                                                   feedback_path,
                                                    ipc_pipe_,
                                                    std::move(ipc_pipe_handle));
 

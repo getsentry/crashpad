@@ -17,6 +17,7 @@
 #include <type_traits>
 #include <utility>
 
+#include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
 #include "client/crash_report_database.h"
 #include "client/settings.h"
@@ -27,6 +28,7 @@
 #include "util/file/file_helper.h"
 #include "util/file/file_writer.h"
 #include "util/misc/metrics.h"
+#include "util/win/command_line.h"
 #include "util/win/registration_protocol_win.h"
 #include "util/win/scoped_process_suspend.h"
 #include "util/win/screenshot.h"
@@ -41,13 +43,17 @@ CrashReportExceptionHandler::CrashReportExceptionHandler(
     const std::vector<base::FilePath>* attachments,
     const base::FilePath* screenshot,
     const UserStreamDataSources* user_stream_data_sources,
-    const bool wait_for_upload)
+    const bool wait_for_upload,
+    const base::FilePath* feedback_handler,
+    const base::FilePath* feedback_path)
     : database_(database),
       upload_thread_(upload_thread),
       process_annotations_(process_annotations),
       attachments_(*attachments),
       screenshot_(screenshot),
       wait_for_upload_(wait_for_upload),
+      feedback_handler_(feedback_handler),
+      feedback_path_(feedback_path),
       user_stream_data_sources_(user_stream_data_sources) {}
 
 CrashReportExceptionHandler::~CrashReportExceptionHandler() {}
@@ -149,6 +155,62 @@ unsigned int CrashReportExceptionHandler::ExceptionHandlerServerException(
           }
         }
       }
+    }
+
+    if (feedback_handler_ && !feedback_handler_->empty() && feedback_path_ &&
+        !feedback_path_->empty()) {
+      FileWriter feedback_writer;
+      bool res = feedback_writer.Open(*feedback_path_,
+                                      FileWriteMode::kReuseOrCreate,
+                                      FilePermissions::kOwnerOnly);
+      (void)res;  // ### TODO
+      feedback_writer.Seek(0, SEEK_END);
+
+      for (const auto& attachment : attachments_) {
+        std::string contents;
+        base::FilePath basename = attachment.BaseName();
+        if (basename.value().rfind(L"__sentry-", 0) == 0 ||
+            !LoggingReadEntireFile(attachment, &contents)) {
+          continue;
+        }
+
+        std::string header = base::StringPrintf(
+            "\n{\"type\": \"attachment\", "
+            "\"length\": %zu, "
+            "\"attachment_type\": \"event.attachment\", "
+            "\"filename\": \"%s\"}\n",
+            contents.size(),
+            basename.value().c_str());
+        feedback_writer.Write(header.data(), header.size());
+        feedback_writer.Write(contents.data(), contents.size());
+      }
+
+      feedback_writer.Close();
+
+      std::wstring command_line;
+      AppendCommandLineArgument(feedback_handler_->value(), &command_line);
+      AppendCommandLineArgument(feedback_path_->value(), &command_line);
+
+      STARTUPINFOW si = {0};
+      PROCESS_INFORMATION pi = {0};
+      si.cb = sizeof(si);
+
+      BOOL rv = CreateProcessW(
+          nullptr,  // lpApplicationName
+          command_line.data(),  // lpCommandLine
+          nullptr,  // lpProcessAttributes
+          nullptr,  // lpThreadAttributes
+          false,  // bInheritHandles
+          DETACHED_PROCESS | CREATE_UNICODE_ENVIRONMENT,  // dwCreationFlags
+          nullptr,  // lpEnvironment
+          nullptr,  // lpCurrentDirectory
+          &si,  // lpStartupInfo
+          &pi  // lpProcessInformation
+      );
+      PLOG(ERROR) << "### CreateProcessW: " << rv;
+
+      CloseHandle(pi.hProcess);
+      CloseHandle(pi.hThread);
     }
 
     UUID uuid;
