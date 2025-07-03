@@ -489,7 +489,9 @@ bool CrashpadClient::StartHandler(
     bool asynchronous_start,
     const std::vector<base::FilePath>& attachments,
     const base::FilePath& screenshot,
-    bool wait_for_upload) {
+    bool wait_for_upload,
+    const base::FilePath& feedback_handler,
+    const base::FilePath& feedback_path) {
   DCHECK(!asynchronous_start);
 
   ScopedFileHandle client_sock, handler_sock;
@@ -505,7 +507,9 @@ bool CrashpadClient::StartHandler(
                                                           http_proxy,
                                                           annotations,
                                                           arguments,
-                                                          attachments);
+                                                          attachments,
+                                                          feedback_handler,
+                                                          feedback_path);
 
   argv.push_back(FormatArgumentInt("initial-client-fd", handler_sock.get()));
   argv.push_back("--shared-client-connection");

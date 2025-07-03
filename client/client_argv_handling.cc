@@ -35,7 +35,9 @@ std::vector<std::string> BuildHandlerArgvStrings(
     const std::string& http_proxy,
     const std::map<std::string, std::string>& annotations,
     const std::vector<std::string>& arguments,
-    const std::vector<base::FilePath>& attachments) {
+    const std::vector<base::FilePath>& attachments,
+    const base::FilePath& feedback_handler,
+    const base::FilePath& feedback_path) {
   std::vector<std::string> argv_strings(1, handler.value());
 
   for (const auto& argument : arguments) {
@@ -67,6 +69,16 @@ std::vector<std::string> BuildHandlerArgvStrings(
   for (const auto& attachment : attachments) {
     argv_strings.push_back(
         FormatArgumentString("attachment", attachment.value()));
+  }
+
+  if (!feedback_handler.empty()) {
+    argv_strings.push_back(
+        FormatArgumentString("feedback-handler", feedback_handler.value()));
+  }
+
+  if (!feedback_path.empty()) {
+    argv_strings.push_back(
+        FormatArgumentString("feedback-path", feedback_path.value()));
   }
 
   return argv_strings;

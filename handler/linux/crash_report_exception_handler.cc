@@ -17,7 +17,9 @@
 #include <memory>
 #include <utility>
 
+#include "base/files/file_path.h"
 #include "base/logging.h"
+#include "base/strings/stringprintf.h"
 #include "build/build_config.h"
 #include "client/settings.h"
 #include "handler/linux/capture_snapshot.h"
@@ -32,6 +34,7 @@
 #include "util/misc/implicit_cast.h"
 #include "util/misc/metrics.h"
 #include "util/misc/uuid.h"
+#include "util/posix/spawn_subprocess.h"
 #include "util/stream/base94_output_stream.h"
 #include "util/stream/log_output_stream.h"
 #include "util/stream/zlib_output_stream.h"
@@ -107,7 +110,9 @@ CrashReportExceptionHandler::CrashReportExceptionHandler(
     bool write_minidump_to_database,
     bool write_minidump_to_log,
     const UserStreamDataSources* user_stream_data_sources,
-    bool wait_for_upload)
+    bool wait_for_upload,
+    const base::FilePath* feedback_handler,
+    const base::FilePath* feedpath_path)
     : database_(database),
       upload_thread_(upload_thread),
       process_annotations_(process_annotations),
@@ -115,7 +120,9 @@ CrashReportExceptionHandler::CrashReportExceptionHandler(
       write_minidump_to_database_(write_minidump_to_database),
       write_minidump_to_log_(write_minidump_to_log),
       user_stream_data_sources_(user_stream_data_sources),
-      wait_for_upload_(wait_for_upload){
+      wait_for_upload_(wait_for_upload),
+      feedback_handler_(feedback_handler),
+      feedback_path_(feedpath_path) {
   DCHECK(write_minidump_to_database_ | write_minidump_to_log_);
 }
 
@@ -289,6 +296,46 @@ bool CrashReportExceptionHandler::WriteMinidumpToDatabase(
     }
 
     CopyFileContent(&file_reader, file_writer);
+  }
+
+  if (feedback_handler_ && !feedback_handler_->empty() && feedback_path_ &&
+      !feedback_path_->empty()) {
+    FileWriter feedback_writer;
+    bool res = feedback_writer.Open(*feedback_path_,
+                                    FileWriteMode::kReuseOrCreate,
+                                    FilePermissions::kOwnerOnly);
+    feedback_writer.Seek(0, SEEK_END);
+
+    for (const auto& attachment : attachments_) {
+      std::string contents;
+      base::FilePath basename = attachment.BaseName();
+      if (basename.value().rfind("__sentry-", 0) == 0 ||
+          !LoggingReadEntireFile(attachment, &contents)) {
+        continue;
+      }
+
+      std::string header = base::StringPrintf(
+          "\n{\"type\": \"attachment\", "
+          "\"length\": %zu, "
+          "\"attachment_type\": \"event.attachment\", "
+          "\"filename\": \"%s\"}\n",
+          contents.size(),
+          basename.value().c_str());
+      feedback_writer.Write(header.data(), header.size());
+      feedback_writer.Write(contents.data(), contents.size());
+    }
+
+    feedback_writer.Close();
+
+    SpawnSubprocess(
+        {
+            feedback_handler_->value(),
+            feedback_path_->value(),
+        },
+        nullptr,
+        -1,
+        !feedback_handler_->IsAbsolute(),
+        nullptr);
   }
 
   UUID uuid;
