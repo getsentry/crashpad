@@ -40,6 +40,7 @@
 #include "util/misc/metrics.h"
 #include "util/misc/tri_state.h"
 #include "util/misc/uuid.h"
+#include "util/posix/spawn_subprocess.h"
 
 namespace crashpad {
 
@@ -48,12 +49,16 @@ CrashReportExceptionHandler::CrashReportExceptionHandler(
     CrashReportUploadThread* upload_thread,
     const std::map<std::string, std::string>* process_annotations,
     const std::vector<base::FilePath>* attachments,
-    const UserStreamDataSources* user_stream_data_sources)
+    const UserStreamDataSources* user_stream_data_sources,
+    const base::FilePath* feedback_handler,
+    const base::FilePath* feedback_path)
     : database_(database),
       upload_thread_(upload_thread),
       process_annotations_(process_annotations),
       attachments_(attachments),
-      user_stream_data_sources_(user_stream_data_sources) {}
+      user_stream_data_sources_(user_stream_data_sources),
+      feedback_handler_(feedback_handler),
+      feedback_path_(feedback_path) {}
 
 CrashReportExceptionHandler::~CrashReportExceptionHandler() {
 }
@@ -194,6 +199,46 @@ kern_return_t CrashReportExceptionHandler::CatchMachException(
       }
 
       CopyFileContent(&file_reader, file_writer);
+    }
+
+    if (feedback_handler_ && !feedback_handler_->empty() && feedback_path_ &&
+        !feedback_path_->empty()) {
+      FileWriter feedback_writer;
+      bool res = feedback_writer.Open(*feedback_path_,
+                                      FileWriteMode::kReuseOrCreate,
+                                      FilePermissions::kOwnerOnly);
+      feedback_writer.Seek(0, SEEK_END);
+
+      for (const auto& attachment : (*attachments_)) {
+        std::string contents;
+        base::FilePath basename = attachment.BaseName();
+        if (basename.value().rfind("__sentry-", 0) == 0 ||
+            !LoggingReadEntireFile(attachment, &contents)) {
+          continue;
+        }
+
+        std::string header = base::StringPrintf(
+            "\n{\"type\": \"attachment\", "
+            "\"length\": %zu, "
+            "\"attachment_type\": \"event.attachment\", "
+            "\"filename\": \"%s\"}\n",
+            contents.size(),
+            basename.value().c_str());
+        feedback_writer.Write(header.data(), header.size());
+        feedback_writer.Write(contents.data(), contents.size());
+      }
+
+      feedback_writer.Close();
+
+      SpawnSubprocess(
+          {
+              feedback_handler_->value(),
+              feedback_path_->value(),
+          },
+          nullptr,
+          0,
+          !feedback_handler_->IsAbsolute(),
+          nullptr);
     }
 
     UUID uuid;
