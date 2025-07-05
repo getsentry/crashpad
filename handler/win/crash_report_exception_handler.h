@@ -93,9 +93,9 @@ class CrashReportExceptionHandler final
   std::vector<base::FilePath> attachments_;
   const base::FilePath* screenshot_;  // weak
   const bool wait_for_upload_;
-  const UserStreamDataSources* user_stream_data_sources_;  // weak
   const base::FilePath* feedback_handler_;  // weak
   const base::FilePath* feedback_path_;  // weak
+  const UserStreamDataSources* user_stream_data_sources_;  // weak
 };
 
 }  // namespace crashpad
