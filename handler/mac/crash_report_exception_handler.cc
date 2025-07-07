@@ -204,7 +204,7 @@ kern_return_t CrashReportExceptionHandler::CatchMachException(
       CrashReportDatabase::FeedbackReport feedback_report(
           new_report->ReportID());
       if (feedback_report.Initialize(*feedback_path_)) {
-        feedback_report.AddAttachments(attachments_);
+        feedback_report.AddAttachments(*attachments_);
         if (auto reader = new_report->Reader()) {
           feedback_report.AddMinidump(reader);
         }
