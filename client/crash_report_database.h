@@ -206,7 +206,7 @@ class CrashReportDatabase {
     FeedbackReport(const FeedbackReport&) = delete;
     FeedbackReport& operator=(const FeedbackReport&) = delete;
 
-    ~FeedbackReport();
+    ~FeedbackReport() = default;
 
     //! \brief Initializes the feedback report with the given file path.
     //! \param[in] path The path where the feedback report will be written.
