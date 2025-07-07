@@ -30,7 +30,7 @@
 #include "util/file/filesystem.h"
 #include "util/misc/initialization_state_dcheck.h"
 #include "util/misc/memory_sanitizer.h"
-#ifdef BUILDFLAG(IS_LINUX)
+#if BUILDFLAG(IS_LINUX)
 #include "util/posix/spawn_subprocess.h"
 #endif
 
