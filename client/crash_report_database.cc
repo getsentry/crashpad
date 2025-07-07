@@ -229,7 +229,12 @@ void CrashReportDatabase::FeedbackReport::AddAttachments(
   for (const auto& attachment : attachments) {
     std::string contents;
     base::FilePath basename = attachment.BaseName();
-    if (basename.value().rfind("__sentry-", 0) == 0 ||
+#if BUILDFLAG(IS_WIN)
+    constexpr std::wstring_view kInternalPrefix = L"__sentry-";
+#else
+    constexpr std::string_view kInternalPrefix = "__sentry-";
+#endif
+    if (basename.value().rfind(kInternalPrefix, 0) == 0 ||
         !LoggingReadEntireFile(attachment, &contents)) {
       continue;
     }

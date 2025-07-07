@@ -718,8 +718,8 @@ bool CrashReportDatabaseWin::LaunchFeedbackHandler(
     const base::FilePath& feedback_handler,
     const base::FilePath& feedback_path) {
   std::wstring command_line;
-  AppendCommandLineArgument(feedback_handler_->value(), &command_line);
-  AppendCommandLineArgument(feedback_path_->value(), &command_line);
+  AppendCommandLineArgument(feedback_handler.value(), &command_line);
+  AppendCommandLineArgument(feedback_path.value(), &command_line);
 
   STARTUPINFOW si = {0};
   PROCESS_INFORMATION pi = {0};
@@ -736,10 +736,14 @@ bool CrashReportDatabaseWin::LaunchFeedbackHandler(
                            &si,  // lpStartupInfo
                            &pi  // lpProcessInformation
   );
-  PLOG(ERROR) << "CreateProcessW: " << rv;
+  if (!rv) {
+    PLOG(ERROR) << "CreateProcessW";
+    return false;
+  }
 
   CloseHandle(pi.hProcess);
   CloseHandle(pi.hThread);
+  return true;
 }
 
 Settings* CrashReportDatabaseWin::GetSettings() {
