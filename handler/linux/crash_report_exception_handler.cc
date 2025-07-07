@@ -325,6 +325,20 @@ bool CrashReportExceptionHandler::WriteMinidumpToDatabase(
       feedback_writer.Write(contents.data(), contents.size());
     }
 
+    if (auto reader = new_report->Reader()) {
+      FileOffset size = reader->Seek(0, SEEK_END);
+      std::string header = base::StringPrintf(
+          "\n{\"type\": \"attachment\", "
+          "\"length\": %zu, "
+          "\"attachment_type\": \"event.minidump\", "
+          "\"filename\": \"%s.dmp\"}\n",
+          size,
+          new_report->ReportID().ToString().c_str());
+      feedback_writer.Write(header.data(), header.size());
+      reader->Seek(0, SEEK_SET);
+      CopyFileContent(reader, &feedback_writer);
+    }
+
     feedback_writer.Close();
 
     SpawnSubprocess(
