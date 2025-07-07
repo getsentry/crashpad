@@ -455,10 +455,26 @@ class CrashReportDatabase {
   //! \param[in] feedback_path The path to the feedback report file.
   //! \return `true` if the feedback handler was launched successfully, `false`
   //!     otherwise.
+  //! \brief Launches the feedback handler executable.
   //!
+  //! This method launches an external feedback handler process with the provided
+  //! feedback report file. The implementation is platform-specific and may have
+  //! different behaviors on different operating systems.
+  //!
+  //! \param[in] feedback_handler The path to the feedback handler executable.
+  //!     On macOS, this can be either an executable or an .app bundle.
+  //! \param[in] feedback_path The path to the feedback report file that will
+  //!     be passed as an argument to the feedback handler.
+  //! \return `true` if the feedback handler was launched successfully, `false`
+  //!     otherwise. On unsupported platforms, this always returns `false`.
+  //!
+  //! \note The launched process runs detached from the parent process.
+  //! \note This method may not be implemented on all platforms.
   virtual bool LaunchFeedbackHandler(const base::FilePath& feedback_handler,
                                      const base::FilePath& feedback_path) {
+    LOG(WARNING) << "LaunchFeedbackHandler not implemented on this platform";
     return false;
+  }
   }
 
  protected:
