@@ -17,9 +17,11 @@
 #include <sys/stat.h>
 
 #include "base/logging.h"
+#include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
 #include "build/build_config.h"
 #include "util/file/directory_reader.h"
+#include "util/file/file_helper.h"
 #include "util/file/filesystem.h"
 
 namespace crashpad {
@@ -202,6 +204,65 @@ bool CrashReportDatabase::UploadReport::Initialize(const base::FilePath& path,
   database_ = db;
   InitializeAttachments();
   return reader_->Open(path);
+}
+
+bool CrashReportDatabase::FeedbackReport::Initialize(
+    const base::FilePath& path) {
+  path_ = path;
+  if (path.empty()) {
+    return false;
+  }
+  writer_ = std::make_unique<FileWriter>();
+  if (!writer_->Open(
+          path, FileWriteMode::kReuseOrCreate, FilePermissions::kOwnerOnly)) {
+    return false;
+  }
+  writer_->Seek(0, SEEK_END);
+  return true;
+}
+
+CrashReportDatabase::FeedbackReport::FeedbackReport(const UUID& uuid)
+    : uuid_(uuid) {}
+
+void CrashReportDatabase::FeedbackReport::AddAttachments(
+    const std::vector<base::FilePath>& attachments) {
+  for (const auto& attachment : attachments) {
+    std::string contents;
+    base::FilePath basename = attachment.BaseName();
+    if (basename.value().rfind("__sentry-", 0) == 0 ||
+        !LoggingReadEntireFile(attachment, &contents)) {
+      continue;
+    }
+
+    std::string header = base::StringPrintf(
+        "\n{\"type\": \"attachment\", "
+        "\"length\": %zu, "
+        "\"attachment_type\": \"event.attachment\", "
+        "\"filename\": \"%s\"}\n",
+        contents.size(),
+        basename.value().c_str());
+    writer_->Write(header.data(), header.size());
+    writer_->Write(contents.data(), contents.size());
+  }
+}
+
+void CrashReportDatabase::FeedbackReport::AddMinidump(
+    FileReaderInterface* reader) {
+  FileOffset size = reader->Seek(0, SEEK_END);
+  std::string header = base::StringPrintf(
+      "\n{\"type\": \"attachment\", "
+      "\"length\": %zu, "
+      "\"attachment_type\": \"event.minidump\", "
+      "\"filename\": \"%s.dmp\"}\n",
+      size,
+      uuid_.ToString().c_str());
+  writer_->Write(header.data(), header.size());
+  reader->Seek(0, SEEK_SET);
+  CopyFileContent(reader, writer_.get());
+}
+
+void CrashReportDatabase::FeedbackReport::Finish() {
+  writer_->Close();
 }
 
 CrashReportDatabase::OperationStatus CrashReportDatabase::RecordUploadComplete(

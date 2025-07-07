@@ -40,7 +40,6 @@
 #include "util/misc/metrics.h"
 #include "util/misc/tri_state.h"
 #include "util/misc/uuid.h"
-#include "util/posix/spawn_subprocess.h"
 
 namespace crashpad {
 
@@ -201,54 +200,17 @@ kern_return_t CrashReportExceptionHandler::CatchMachException(
       CopyFileContent(&file_reader, file_writer);
     }
 
-    if (feedback_handler_ && !feedback_handler_->empty() && feedback_path_ &&
-        !feedback_path_->empty()) {
-      FileWriter feedback_writer;
-      bool res = feedback_writer.Open(*feedback_path_,
-                                      FileWriteMode::kReuseOrCreate,
-                                      FilePermissions::kOwnerOnly);
-      feedback_writer.Seek(0, SEEK_END);
-
-      for (const auto& attachment : (*attachments_)) {
-        std::string contents;
-        base::FilePath basename = attachment.BaseName();
-        if (basename.value().rfind("__sentry-", 0) == 0 ||
-            !LoggingReadEntireFile(attachment, &contents)) {
-          continue;
+    if (feedback_handler_ && feedback_path_) {
+      CrashReportDatabase::FeedbackReport feedback_report(
+          new_report->ReportID());
+      if (feedback_report.Initialize(*feedback_path_)) {
+        feedback_report.AddAttachments(attachments_);
+        if (auto reader = new_report->Reader()) {
+          feedback_report.AddMinidump(reader);
         }
-
-        std::string header = base::StringPrintf(
-            "\n{\"type\": \"attachment\", "
-            "\"length\": %zu, "
-            "\"attachment_type\": \"event.attachment\", "
-            "\"filename\": \"%s\"}\n",
-            contents.size(),
-            basename.value().c_str());
-        feedback_writer.Write(header.data(), header.size());
-        feedback_writer.Write(contents.data(), contents.size());
+        feedback_report.Finish();
+        database_->LaunchFeedbackHandler(*feedback_handler_, *feedback_path_);
       }
-
-      feedback_writer.Close();
-
-      bool use_path = true;
-      std::vector<std::string> argv;
-      if (feedback_handler_->FinalExtension() == ".app") {
-        argv = {
-            "open",
-            "-a",
-            feedback_handler_->value(),
-            "--args",
-            feedback_path_->value(),
-        };
-      } else {
-        argv = {
-            feedback_handler_->value(),
-            feedback_path_->value(),
-        };
-        use_path = !feedback_handler_->IsAbsolute();
-      }
-
-      SpawnSubprocess(argv, nullptr, 0, use_path, nullptr);
     }
 
     UUID uuid;

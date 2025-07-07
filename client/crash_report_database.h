@@ -192,6 +192,26 @@ class CrashReportDatabase {
     bool report_metrics_;
   };
 
+  class FeedbackReport {
+   public:
+    FeedbackReport(const UUID& uuid);
+
+    FeedbackReport(const FeedbackReport&) = delete;
+    FeedbackReport& operator=(const FeedbackReport&) = delete;
+
+    ~FeedbackReport() = default;
+
+    bool Initialize(const base::FilePath& path);
+    void AddAttachments(const std::vector<base::FilePath>& attachments);
+    void AddMinidump(FileReaderInterface* reader);
+    void Finish();
+
+   private:
+    UUID uuid_;
+    base::FilePath path_;
+    std::unique_ptr<FileWriter> writer_;
+  };
+
   //! \brief The result code for operations performed on a database.
   enum OperationStatus {
     //! \brief No error occurred.
@@ -414,6 +434,12 @@ class CrashReportDatabase {
   //!     report files are considered expired.
   //! \return The number of reports cleaned.
   virtual int CleanDatabase(time_t lockfile_ttl) { return 0; }
+
+  //! \brief TODO
+  virtual bool LaunchFeedbackHandler(const base::FilePath& feedback_handler,
+                                     const base::FilePath& feedback_path) {
+    return false;
+  }
 
  protected:
   CrashReportDatabase() {}

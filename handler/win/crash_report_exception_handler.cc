@@ -17,7 +17,6 @@
 #include <type_traits>
 #include <utility>
 
-#include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
 #include "client/crash_report_database.h"
 #include "client/settings.h"
@@ -28,7 +27,6 @@
 #include "util/file/file_helper.h"
 #include "util/file/file_writer.h"
 #include "util/misc/metrics.h"
-#include "util/win/command_line.h"
 #include "util/win/registration_protocol_win.h"
 #include "util/win/scoped_process_suspend.h"
 #include "util/win/screenshot.h"
@@ -157,60 +155,17 @@ unsigned int CrashReportExceptionHandler::ExceptionHandlerServerException(
       }
     }
 
-    if (feedback_handler_ && !feedback_handler_->empty() && feedback_path_ &&
-        !feedback_path_->empty()) {
-      FileWriter feedback_writer;
-      bool res = feedback_writer.Open(*feedback_path_,
-                                      FileWriteMode::kReuseOrCreate,
-                                      FilePermissions::kOwnerOnly);
-      (void)res;  // ### TODO
-      feedback_writer.Seek(0, SEEK_END);
-
-      for (const auto& attachment : attachments_) {
-        std::string contents;
-        base::FilePath basename = attachment.BaseName();
-        if (basename.value().rfind(L"__sentry-", 0) == 0 ||
-            !LoggingReadEntireFile(attachment, &contents)) {
-          continue;
+    if (feedback_handler_ && feedback_path_) {
+      CrashReportDatabase::FeedbackReport feedback_report(
+          new_report->ReportID());
+      if (feedback_report.Initialize(*feedback_path_)) {
+        feedback_report.AddAttachments(attachments_);
+        if (auto reader = new_report->Reader()) {
+          feedback_report.AddMinidump(reader);
         }
-
-        std::string header = base::StringPrintf(
-            "\n{\"type\": \"attachment\", "
-            "\"length\": %zu, "
-            "\"attachment_type\": \"event.attachment\", "
-            "\"filename\": \"%s\"}\n",
-            contents.size(),
-            basename.value().c_str());
-        feedback_writer.Write(header.data(), header.size());
-        feedback_writer.Write(contents.data(), contents.size());
+        feedback_report.Finish();
+        database_->LaunchFeedbackHandler(*feedback_handler_, *feedback_path_);
       }
-
-      feedback_writer.Close();
-
-      std::wstring command_line;
-      AppendCommandLineArgument(feedback_handler_->value(), &command_line);
-      AppendCommandLineArgument(feedback_path_->value(), &command_line);
-
-      STARTUPINFOW si = {0};
-      PROCESS_INFORMATION pi = {0};
-      si.cb = sizeof(si);
-
-      BOOL rv = CreateProcessW(
-          nullptr,  // lpApplicationName
-          command_line.data(),  // lpCommandLine
-          nullptr,  // lpProcessAttributes
-          nullptr,  // lpThreadAttributes
-          false,  // bInheritHandles
-          DETACHED_PROCESS | CREATE_UNICODE_ENVIRONMENT,  // dwCreationFlags
-          nullptr,  // lpEnvironment
-          nullptr,  // lpCurrentDirectory
-          &si,  // lpStartupInfo
-          &pi  // lpProcessInformation
-      );
-      PLOG(ERROR) << "### CreateProcessW: " << rv;
-
-      CloseHandle(pi.hProcess);
-      CloseHandle(pi.hThread);
     }
 
     UUID uuid;

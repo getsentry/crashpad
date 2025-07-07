@@ -17,9 +17,7 @@
 #include <memory>
 #include <utility>
 
-#include "base/files/file_path.h"
 #include "base/logging.h"
-#include "base/strings/stringprintf.h"
 #include "build/build_config.h"
 #include "client/settings.h"
 #include "handler/linux/capture_snapshot.h"
@@ -34,7 +32,6 @@
 #include "util/misc/implicit_cast.h"
 #include "util/misc/metrics.h"
 #include "util/misc/uuid.h"
-#include "util/posix/spawn_subprocess.h"
 #include "util/stream/base94_output_stream.h"
 #include "util/stream/log_output_stream.h"
 #include "util/stream/zlib_output_stream.h"
@@ -298,58 +295,16 @@ bool CrashReportExceptionHandler::WriteMinidumpToDatabase(
     CopyFileContent(&file_reader, file_writer);
   }
 
-  if (feedback_handler_ && !feedback_handler_->empty() && feedback_path_ &&
-      !feedback_path_->empty()) {
-    FileWriter feedback_writer;
-    bool res = feedback_writer.Open(*feedback_path_,
-                                    FileWriteMode::kReuseOrCreate,
-                                    FilePermissions::kOwnerOnly);
-    feedback_writer.Seek(0, SEEK_END);
-
-    for (const auto& attachment : attachments_) {
-      std::string contents;
-      base::FilePath basename = attachment.BaseName();
-      if (basename.value().rfind("__sentry-", 0) == 0 ||
-          !LoggingReadEntireFile(attachment, &contents)) {
-        continue;
+  if (feedback_handler_ && feedback_path_) {
+    CrashReportDatabase::FeedbackReport feedback_report(new_report->ReportID());
+    if (feedback_report.Initialize(*feedback_path_)) {
+      feedback_report.AddAttachments(attachments_);
+      if (auto reader = new_report->Reader()) {
+        feedback_report.AddMinidump(reader);
       }
-
-      std::string header = base::StringPrintf(
-          "\n{\"type\": \"attachment\", "
-          "\"length\": %zu, "
-          "\"attachment_type\": \"event.attachment\", "
-          "\"filename\": \"%s\"}\n",
-          contents.size(),
-          basename.value().c_str());
-      feedback_writer.Write(header.data(), header.size());
-      feedback_writer.Write(contents.data(), contents.size());
+      feedback_report.Finish();
+      database_->LaunchFeedbackHandler(*feedback_handler_, *feedback_path_);
     }
-
-    if (auto reader = new_report->Reader()) {
-      FileOffset size = reader->Seek(0, SEEK_END);
-      std::string header = base::StringPrintf(
-          "\n{\"type\": \"attachment\", "
-          "\"length\": %zu, "
-          "\"attachment_type\": \"event.minidump\", "
-          "\"filename\": \"%s.dmp\"}\n",
-          size,
-          new_report->ReportID().ToString().c_str());
-      feedback_writer.Write(header.data(), header.size());
-      reader->Seek(0, SEEK_SET);
-      CopyFileContent(reader, &feedback_writer);
-    }
-
-    feedback_writer.Close();
-
-    SpawnSubprocess(
-        {
-            feedback_handler_->value(),
-            feedback_path_->value(),
-        },
-        nullptr,
-        -1,
-        !feedback_handler_->IsAbsolute(),
-        nullptr);
   }
 
   UUID uuid;

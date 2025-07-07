@@ -35,6 +35,7 @@
 #include "util/misc/implicit_cast.h"
 #include "util/misc/initialization_state_dcheck.h"
 #include "util/misc/metrics.h"
+#include "util/win/command_line.h"
 
 namespace crashpad {
 
@@ -650,6 +651,8 @@ class CrashReportDatabaseWin : public CrashReportDatabase {
   OperationStatus RequestUpload(const UUID& uuid) override;
   int CleanDatabase(time_t lockfile_ttl) override;
   base::FilePath DatabasePath() override;
+  bool LaunchFeedbackHandler(const base::FilePath& feedback_handler,
+                             const base::FilePath& feedback_path) override;
 
  private:
   // CrashReportDatabase:
@@ -709,6 +712,34 @@ bool CrashReportDatabaseWin::Initialize(bool may_create) {
 
 base::FilePath CrashReportDatabaseWin::DatabasePath() {
   return base_dir_;
+}
+
+bool CrashReportDatabaseWin::LaunchFeedbackHandler(
+    const base::FilePath& feedback_handler,
+    const base::FilePath& feedback_path) {
+  std::wstring command_line;
+  AppendCommandLineArgument(feedback_handler_->value(), &command_line);
+  AppendCommandLineArgument(feedback_path_->value(), &command_line);
+
+  STARTUPINFOW si = {0};
+  PROCESS_INFORMATION pi = {0};
+  si.cb = sizeof(si);
+
+  BOOL rv = CreateProcessW(nullptr,  // lpApplicationName
+                           command_line.data(),  // lpCommandLine
+                           nullptr,  // lpProcessAttributes
+                           nullptr,  // lpThreadAttributes
+                           false,  // bInheritHandles
+                           DETACHED_PROCESS,  // dwCreationFlags
+                           nullptr,  // lpEnvironment
+                           nullptr,  // lpCurrentDirectory
+                           &si,  // lpStartupInfo
+                           &pi  // lpProcessInformation
+  );
+  PLOG(ERROR) << "CreateProcessW: " << rv;
+
+  CloseHandle(pi.hProcess);
+  CloseHandle(pi.hThread);
 }
 
 Settings* CrashReportDatabaseWin::GetSettings() {

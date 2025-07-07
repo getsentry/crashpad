@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "client/crash_report_database.h"
+#include "util/posix/spawn_subprocess.h"
 
 #import <Foundation/Foundation.h>
 #include <errno.h>
@@ -167,6 +168,8 @@ class CrashReportDatabaseMac : public CrashReportDatabase {
   OperationStatus RequestUpload(const UUID& uuid) override;
   int CleanDatabase(time_t lockfile_ttl) override;
   base::FilePath DatabasePath() override;
+  bool LaunchFeedbackHandler(const base::FilePath& feedback_handler,
+                             const base::FilePath& feedback_path) override;
 
  private:
   // CrashReportDatabase:
@@ -339,6 +342,30 @@ bool CrashReportDatabaseMac::Initialize(bool may_create) {
 
 base::FilePath CrashReportDatabaseMac::DatabasePath() {
   return base_dir_;
+}
+
+bool CrashReportDatabaseMac::LaunchFeedbackHandler(
+    const base::FilePath& feedback_handler,
+    const base::FilePath& feedback_path) {
+  bool use_path = true;
+  std::vector<std::string> argv;
+  if (feedback_handler.FinalExtension() == ".app") {
+    argv = {
+        "open",
+        "-a",
+        feedback_handler.value(),
+        "--args",
+        feedback_path.value(),
+    };
+  } else {
+    argv = {
+        feedback_handler.value(),
+        feedback_path.value(),
+    };
+    use_path = !feedback_handler.IsAbsolute();
+  }
+
+  return SpawnSubprocess(argv, nullptr, 0, use_path, nullptr);
 }
 
 Settings* CrashReportDatabaseMac::GetSettings() {
