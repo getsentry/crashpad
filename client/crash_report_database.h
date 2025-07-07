@@ -192,6 +192,11 @@ class CrashReportDatabase {
     bool report_metrics_;
   };
 
+  //! \brief A helper class for creating feedback reports that aggregate crash data.
+  //!
+  //! This class is used to create feedback envelope files that contain crash
+  //! information and attachments in a specific format for external feedback handlers.
+  //! The class follows RAII principles and automatically closes file handles when destroyed.
   class FeedbackReport {
    public:
     FeedbackReport(const UUID& uuid);
@@ -199,11 +204,22 @@ class CrashReportDatabase {
     FeedbackReport(const FeedbackReport&) = delete;
     FeedbackReport& operator=(const FeedbackReport&) = delete;
 
-    ~FeedbackReport() = default;
+    ~FeedbackReport();
 
+    //! \brief Initializes the feedback report with the given file path.
+    //! \param[in] path The path where the feedback report will be written.
+    //! \return true on success, false on failure.
     bool Initialize(const base::FilePath& path);
+    
+    //! \brief Adds attachments to the feedback report.
+    //! \param[in] attachments Vector of file paths to attach.
     void AddAttachments(const std::vector<base::FilePath>& attachments);
+    
+    //! \brief Adds minidump data to the feedback report.
+    //! \param[in] reader File reader for the minidump data.
     void AddMinidump(FileReaderInterface* reader);
+    
+    //! \brief Finalizes the feedback report and closes file handles.
     void Finish();
 
    private:
@@ -211,8 +227,6 @@ class CrashReportDatabase {
     base::FilePath path_;
     std::unique_ptr<FileWriter> writer_;
   };
-
-  //! \brief The result code for operations performed on a database.
   enum OperationStatus {
     //! \brief No error occurred.
     kNoError = 0,
