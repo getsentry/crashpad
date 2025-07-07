@@ -192,11 +192,13 @@ class CrashReportDatabase {
     bool report_metrics_;
   };
 
-  //! \brief A helper class for creating feedback reports that aggregate crash data.
+  //! \brief A helper class for creating feedback reports that aggregate crash
+  //! data.
   //!
   //! This class is used to create feedback envelope files that contain crash
-  //! information and attachments in a specific format for external feedback handlers.
-  //! The class follows RAII principles and automatically closes file handles when destroyed.
+  //! information and attachments in a specific format for external feedback
+  //! handlers. The class follows RAII principles and automatically closes file
+  //! handles when destroyed.
   class FeedbackReport {
    public:
     FeedbackReport(const UUID& uuid);
@@ -210,15 +212,15 @@ class CrashReportDatabase {
     //! \param[in] path The path where the feedback report will be written.
     //! \return true on success, false on failure.
     bool Initialize(const base::FilePath& path);
-    
+
     //! \brief Adds attachments to the feedback report.
     //! \param[in] attachments Vector of file paths to attach.
     void AddAttachments(const std::vector<base::FilePath>& attachments);
-    
+
     //! \brief Adds minidump data to the feedback report.
     //! \param[in] reader File reader for the minidump data.
     void AddMinidump(FileReaderInterface* reader);
-    
+
     //! \brief Finalizes the feedback report and closes file handles.
     void Finish();
 
@@ -457,9 +459,9 @@ class CrashReportDatabase {
   //!     otherwise.
   //! \brief Launches the feedback handler executable.
   //!
-  //! This method launches an external feedback handler process with the provided
-  //! feedback report file. The implementation is platform-specific and may have
-  //! different behaviors on different operating systems.
+  //! This method launches an external feedback handler process with the
+  //! provided feedback report file. The implementation is platform-specific and
+  //! may have different behaviors on different operating systems.
   //!
   //! \param[in] feedback_handler The path to the feedback handler executable.
   //!     On macOS, this can be either an executable or an .app bundle.
@@ -472,9 +474,7 @@ class CrashReportDatabase {
   //! \note This method may not be implemented on all platforms.
   virtual bool LaunchFeedbackHandler(const base::FilePath& feedback_handler,
                                      const base::FilePath& feedback_path) {
-    LOG(WARNING) << "LaunchFeedbackHandler not implemented on this platform";
     return false;
-  }
   }
 
  protected:
