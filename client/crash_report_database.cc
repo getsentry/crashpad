@@ -256,7 +256,7 @@ void CrashReportDatabase::FeedbackReport::AddMinidump(
   FileOffset size = reader->Seek(0, SEEK_END);
   std::string header = base::StringPrintf(
       "\n{\"type\": \"attachment\", "
-      "\"length\": %zu, "
+      "\"length\": %lld, "
       "\"attachment_type\": \"event.minidump\", "
       "\"filename\": \"%s.dmp\"}\n",
       size,
