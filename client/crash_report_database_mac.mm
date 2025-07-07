@@ -351,7 +351,7 @@ bool CrashReportDatabaseMac::LaunchFeedbackHandler(
   std::vector<std::string> argv;
   if (feedback_handler.FinalExtension() == ".app") {
     argv = {
-        "open",
+        "/usr/bin/open",
         "-a",
         feedback_handler.value(),
         "--args",
