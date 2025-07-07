@@ -435,7 +435,13 @@ class CrashReportDatabase {
   //! \return The number of reports cleaned.
   virtual int CleanDatabase(time_t lockfile_ttl) { return 0; }
 
-  //! \brief TODO
+  //! \brief Launches the feedback handler.
+  //!
+  //! \param[in] feedback_handler The path to the feedback handler executable.
+  //! \param[in] feedback_path The path to the feedback report file.
+  //! \return `true` if the feedback handler was launched successfully, `false`
+  //!     otherwise.
+  //!
   virtual bool LaunchFeedbackHandler(const base::FilePath& feedback_handler,
                                      const base::FilePath& feedback_path) {
     return false;
