@@ -514,10 +514,6 @@ bool CrashpadClient::StartHandler(
     bool wait_for_upload,
     const base::FilePath& feedback_handler,
     const base::FilePath& feedback_path) {
-  DCHECK(!handler.empty());
-  DCHECK(!database.empty());
-  DCHECK(!metrics_dir.empty());
-  DCHECK(!url.empty());
   (void) wait_for_upload; // unused in mac (for now)
 
   // The “restartable” behavior can only be selected on OS X 10.10 and later. In
