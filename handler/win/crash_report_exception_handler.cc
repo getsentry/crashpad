@@ -155,7 +155,10 @@ unsigned int CrashReportExceptionHandler::ExceptionHandlerServerException(
       }
     }
 
-    if (feedback_handler_ && feedback_path_) {
+    bool has_feedback_handler = feedback_handler_ &&
+                                !feedback_handler_->empty() && feedback_path_ &&
+                                !feedback_path_->empty();
+    if (has_feedback_handler) {
       CrashReportDatabase::FeedbackReport feedback_report(
           new_report->ReportID());
       if (feedback_report.Initialize(*feedback_path_)) {
@@ -178,7 +181,7 @@ unsigned int CrashReportExceptionHandler::ExceptionHandlerServerException(
       return termination_code;
     }
 
-    if (upload_thread_) {
+    if (upload_thread_ && !has_feedback_handler) {
       if (wait_for_upload_) {
         upload_thread_->ReportPendingSync(uuid);
       }

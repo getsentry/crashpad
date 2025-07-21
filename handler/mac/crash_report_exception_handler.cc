@@ -200,7 +200,10 @@ kern_return_t CrashReportExceptionHandler::CatchMachException(
       CopyFileContent(&file_reader, file_writer);
     }
 
-    if (feedback_handler_ && feedback_path_) {
+    bool has_feedback_handler = feedback_handler_ &&
+                                !feedback_handler_->empty() && feedback_path_ &&
+                                !feedback_path_->empty();
+    if (has_feedback_handler) {
       CrashReportDatabase::FeedbackReport feedback_report(
           new_report->ReportID());
       if (feedback_report.Initialize(*feedback_path_)) {
@@ -222,7 +225,7 @@ kern_return_t CrashReportExceptionHandler::CatchMachException(
       return KERN_FAILURE;
     }
 
-    if (upload_thread_) {
+    if (upload_thread_ && !has_feedback_handler) {
       upload_thread_->ReportPending(uuid);
     }
   }
