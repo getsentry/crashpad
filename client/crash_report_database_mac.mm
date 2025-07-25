@@ -168,8 +168,8 @@ class CrashReportDatabaseMac : public CrashReportDatabase {
   OperationStatus RequestUpload(const UUID& uuid) override;
   int CleanDatabase(time_t lockfile_ttl) override;
   base::FilePath DatabasePath() override;
-  bool LaunchFeedbackHandler(const base::FilePath& feedback_handler,
-                             const base::FilePath& feedback_path) override;
+  void LaunchCrashReporter(const base::FilePath& crash_reporter,
+                           const base::FilePath& crash_envelope) override;
 
  private:
   // CrashReportDatabase:
@@ -344,28 +344,28 @@ base::FilePath CrashReportDatabaseMac::DatabasePath() {
   return base_dir_;
 }
 
-bool CrashReportDatabaseMac::LaunchFeedbackHandler(
-    const base::FilePath& feedback_handler,
-    const base::FilePath& feedback_path) {
+void CrashReportDatabaseMac::LaunchCrashReporter(
+    const base::FilePath& crash_reporter,
+    const base::FilePath& crash_envelope) {
   bool use_path = true;
   std::vector<std::string> argv;
-  if (feedback_handler.FinalExtension() == ".app") {
+  if (crash_reporter.FinalExtension() == ".app") {
     argv = {
         "/usr/bin/open",
         "-a",
-        feedback_handler.value(),
+        crash_reporter.value(),
         "--args",
-        feedback_path.value(),
+        crash_envelope.value(),
     };
   } else {
     argv = {
-        feedback_handler.value(),
-        feedback_path.value(),
+        crash_reporter.value(),
+        crash_envelope.value(),
     };
-    use_path = !feedback_handler.IsAbsolute();
+    use_path = !crash_reporter.IsAbsolute();
   }
 
-  return SpawnSubprocess(argv, nullptr, 0, use_path, nullptr);
+  SpawnSubprocess(argv, nullptr, 0, use_path, nullptr);
 }
 
 Settings* CrashReportDatabaseMac::GetSettings() {

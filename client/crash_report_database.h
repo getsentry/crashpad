@@ -192,21 +192,16 @@ class CrashReportDatabase {
     bool report_metrics_;
   };
 
-  //! \brief A helper class for creating feedback reports that aggregate crash
-  //! data.
-  //!
-  //! This class is used to create feedback envelope files that contain crash
-  //! information and attachments in a specific format for external feedback
-  //! handlers. The class follows RAII principles and automatically closes file
-  //! handles when destroyed.
-  class FeedbackReport {
+  //! \brief A helper class for creating crash report envelopes that aggregate
+  //! crash data.
+  class Envelope {
    public:
-    FeedbackReport(const UUID& uuid);
+    Envelope(const UUID& uuid);
 
-    FeedbackReport(const FeedbackReport&) = delete;
-    FeedbackReport& operator=(const FeedbackReport&) = delete;
+    Envelope(const Envelope&) = delete;
+    Envelope& operator=(const Envelope&) = delete;
 
-    ~FeedbackReport() = default;
+    ~Envelope() = default;
 
     //! \brief Initializes the feedback report with the given file path.
     //! \param[in] path The path where the feedback report will be written.
@@ -229,6 +224,8 @@ class CrashReportDatabase {
     base::FilePath path_;
     std::unique_ptr<FileWriter> writer_;
   };
+
+  //! \brief The result code for operations performed on a database.
   enum OperationStatus {
     //! \brief No error occurred.
     kNoError = 0,
@@ -451,31 +448,21 @@ class CrashReportDatabase {
   //! \return The number of reports cleaned.
   virtual int CleanDatabase(time_t lockfile_ttl) { return 0; }
 
-  //! \brief Launches the feedback handler.
+  //! \brief Launches the external crash reporter.
   //!
-  //! \param[in] feedback_handler The path to the feedback handler executable.
-  //! \param[in] feedback_path The path to the feedback report file.
-  //! \return `true` if the feedback handler was launched successfully, `false`
-  //!     otherwise.
-  //! \brief Launches the feedback handler executable.
-  //!
-  //! This method launches an external feedback handler process with the
-  //! provided feedback report file. The implementation is platform-specific and
+  //! This method launches an external crash reporter process with the
+  //! provided crash report file. The implementation is platform-specific and
   //! may have different behaviors on different operating systems.
   //!
-  //! \param[in] feedback_handler The path to the feedback handler executable.
+  //! \param[in] crash_reporter The path to the crash reporter executable.
   //!     On macOS, this can be either an executable or an .app bundle.
-  //! \param[in] feedback_path The path to the feedback report file that will
-  //!     be passed as an argument to the feedback handler.
-  //! \return `true` if the feedback handler was launched successfully, `false`
-  //!     otherwise. On unsupported platforms, this always returns `false`.
+  //! \param[in] crash_envelope The path to the crash report envelope file that
+  //!     will be passed as an argument to the crash reporter.
   //!
   //! \note The launched process runs detached from the parent process.
   //! \note This method may not be implemented on all platforms.
-  virtual bool LaunchFeedbackHandler(const base::FilePath& feedback_handler,
-                                     const base::FilePath& feedback_path) {
-    return false;
-  }
+  virtual void LaunchCrashReporter(const base::FilePath& crash_reporter,
+                                   const base::FilePath& crash_envelope) {}
 
  protected:
   CrashReportDatabase() {}

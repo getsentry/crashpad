@@ -206,8 +206,7 @@ bool CrashReportDatabase::UploadReport::Initialize(const base::FilePath& path,
   return reader_->Open(path);
 }
 
-bool CrashReportDatabase::FeedbackReport::Initialize(
-    const base::FilePath& path) {
+bool CrashReportDatabase::Envelope::Initialize(const base::FilePath& path) {
   path_ = path;
   if (path.empty()) {
     return false;
@@ -221,10 +220,9 @@ bool CrashReportDatabase::FeedbackReport::Initialize(
   return true;
 }
 
-CrashReportDatabase::FeedbackReport::FeedbackReport(const UUID& uuid)
-    : uuid_(uuid) {}
+CrashReportDatabase::Envelope::Envelope(const UUID& uuid) : uuid_(uuid) {}
 
-void CrashReportDatabase::FeedbackReport::AddAttachments(
+void CrashReportDatabase::Envelope::AddAttachments(
     const std::vector<base::FilePath>& attachments) {
   for (const auto& attachment : attachments) {
     std::string contents;
@@ -251,8 +249,7 @@ void CrashReportDatabase::FeedbackReport::AddAttachments(
   }
 }
 
-void CrashReportDatabase::FeedbackReport::AddMinidump(
-    FileReaderInterface* reader) {
+void CrashReportDatabase::Envelope::AddMinidump(FileReaderInterface* reader) {
   FileOffset size = reader->Seek(0, SEEK_END);
   std::string header = base::StringPrintf(
       "\n{\"type\": \"attachment\", "
@@ -266,7 +263,7 @@ void CrashReportDatabase::FeedbackReport::AddMinidump(
   CopyFileContent(reader, writer_.get());
 }
 
-void CrashReportDatabase::FeedbackReport::Finish() {
+void CrashReportDatabase::Envelope::Finish() {
   writer_->Close();
 }
 

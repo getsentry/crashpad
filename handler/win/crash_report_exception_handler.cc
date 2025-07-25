@@ -42,16 +42,16 @@ CrashReportExceptionHandler::CrashReportExceptionHandler(
     const base::FilePath* screenshot,
     const UserStreamDataSources* user_stream_data_sources,
     const bool wait_for_upload,
-    const base::FilePath* feedback_handler,
-    const base::FilePath* feedback_path)
+    const base::FilePath* crash_reporter,
+    const base::FilePath* crash_envelope)
     : database_(database),
       upload_thread_(upload_thread),
       process_annotations_(process_annotations),
       attachments_(*attachments),
       screenshot_(screenshot),
       wait_for_upload_(wait_for_upload),
-      feedback_handler_(feedback_handler),
-      feedback_path_(feedback_path),
+      crash_reporter_(crash_reporter),
+      crash_envelope_(crash_envelope),
       user_stream_data_sources_(user_stream_data_sources) {}
 
 CrashReportExceptionHandler::~CrashReportExceptionHandler() {}
@@ -155,19 +155,17 @@ unsigned int CrashReportExceptionHandler::ExceptionHandlerServerException(
       }
     }
 
-    bool has_feedback_handler = feedback_handler_ &&
-                                !feedback_handler_->empty() && feedback_path_ &&
-                                !feedback_path_->empty();
-    if (has_feedback_handler) {
-      CrashReportDatabase::FeedbackReport feedback_report(
-          new_report->ReportID());
-      if (feedback_report.Initialize(*feedback_path_)) {
-        feedback_report.AddAttachments(attachments_);
+    bool has_crash_reporter = crash_reporter_ && !crash_reporter_->empty() &&
+                              crash_envelope_ && !crash_envelope_->empty();
+    if (has_crash_reporter) {
+      CrashReportDatabase::Envelope envelope(new_report->ReportID());
+      if (envelope.Initialize(*crash_envelope_)) {
+        envelope.AddAttachments(attachments_);
         if (auto reader = new_report->Reader()) {
-          feedback_report.AddMinidump(reader);
+          envelope.AddMinidump(reader);
         }
-        feedback_report.Finish();
-        database_->LaunchFeedbackHandler(*feedback_handler_, *feedback_path_);
+        envelope.Finish();
+        database_->LaunchCrashReporter(*crash_reporter_, *crash_envelope_);
       }
     }
 
@@ -181,7 +179,7 @@ unsigned int CrashReportExceptionHandler::ExceptionHandlerServerException(
       return termination_code;
     }
 
-    if (upload_thread_ && !has_feedback_handler) {
+    if (upload_thread_ && !has_crash_reporter) {
       if (wait_for_upload_) {
         upload_thread_->ReportPendingSync(uuid);
       }

@@ -651,8 +651,8 @@ class CrashReportDatabaseWin : public CrashReportDatabase {
   OperationStatus RequestUpload(const UUID& uuid) override;
   int CleanDatabase(time_t lockfile_ttl) override;
   base::FilePath DatabasePath() override;
-  bool LaunchFeedbackHandler(const base::FilePath& feedback_handler,
-                             const base::FilePath& feedback_path) override;
+  void LaunchCrashReporter(const base::FilePath& crash_reporter,
+                           const base::FilePath& crash_envelope) override;
 
  private:
   // CrashReportDatabase:
@@ -714,12 +714,12 @@ base::FilePath CrashReportDatabaseWin::DatabasePath() {
   return base_dir_;
 }
 
-bool CrashReportDatabaseWin::LaunchFeedbackHandler(
-    const base::FilePath& feedback_handler,
-    const base::FilePath& feedback_path) {
+void CrashReportDatabaseWin::LaunchCrashReporter(
+    const base::FilePath& crash_reporter,
+    const base::FilePath& crash_envelope) {
   std::wstring command_line;
-  AppendCommandLineArgument(feedback_handler.value(), &command_line);
-  AppendCommandLineArgument(feedback_path.value(), &command_line);
+  AppendCommandLineArgument(crash_reporter.value(), &command_line);
+  AppendCommandLineArgument(crash_envelope.value(), &command_line);
 
   STARTUPINFOW si = {0};
   PROCESS_INFORMATION pi = {0};
@@ -738,12 +738,11 @@ bool CrashReportDatabaseWin::LaunchFeedbackHandler(
   );
   if (!rv) {
     PLOG(ERROR) << "CreateProcessW";
-    return false;
+    return;
   }
 
   CloseHandle(pi.hProcess);
   CloseHandle(pi.hThread);
-  return true;
 }
 
 Settings* CrashReportDatabaseWin::GetSettings() {

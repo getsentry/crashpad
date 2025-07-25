@@ -192,8 +192,8 @@ class CrashReportDatabaseGeneric : public CrashReportDatabase {
   OperationStatus RequestUpload(const UUID& uuid) override;
   int CleanDatabase(time_t lockfile_ttl) override;
   base::FilePath DatabasePath() override;
-  bool LaunchFeedbackHandler(const base::FilePath& feedback_handler,
-                             const base::FilePath& feedback_path) override;
+  void LaunchCrashReporter(const base::FilePath& crash_reporter,
+                           const base::FilePath& crash_envelope) override;
 
  private:
   struct LockfileUploadReport : public UploadReport {
@@ -326,21 +326,19 @@ base::FilePath CrashReportDatabaseGeneric::DatabasePath() {
   return base_dir_;
 }
 
-bool CrashReportDatabaseGeneric::LaunchFeedbackHandler(
-    const base::FilePath& feedback_handler,
-    const base::FilePath& feedback_path) {
+void CrashReportDatabaseGeneric::LaunchCrashReporter(
+    const base::FilePath& crash_reporter,
+    const base::FilePath& crash_envelope) {
 #if BUILDFLAG(IS_LINUX)
-  return SpawnSubprocess(
+  SpawnSubprocess(
       {
-          feedback_handler.value(),
-          feedback_path.value(),
+          crash_reporter.value(),
+          crash_envelope.value(),
       },
       nullptr,
       -1,
-      !feedback_handler.IsAbsolute(),
+      !crash_reporter.IsAbsolute(),
       nullptr);
-#else
-  return false;
 #endif
 }
 

@@ -272,8 +272,8 @@ struct Options {
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_WIN)
   bool wait_for_upload = false;
 #endif
-  base::FilePath feedback_handler;
-  base::FilePath feedback_path;
+  base::FilePath crash_reporter;
+  base::FilePath crash_envelope;
 };
 
 // Splits |key_value| on '=' and inserts the resulting key and value into |map|.
@@ -655,8 +655,8 @@ int HandlerMain(int argc,
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_WIN)
     kOptionWaitForUpload,
 #endif
-    kOptionFeedbackHandler,
-    kOptionFeedbackPath,
+    kOptionCrashReporter,
+    kOptionCrashEnvelope,
 
     // Standard options.
     kOptionHelp = -2,
@@ -754,8 +754,8 @@ int HandlerMain(int argc,
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_WIN)
     {"wait-for-upload", no_argument, nullptr, kOptionWaitForUpload},
 #endif
-    {"feedback-handler", required_argument, nullptr, kOptionFeedbackHandler},
-    {"feedback-path", required_argument, nullptr, kOptionFeedbackPath},
+    {"crash-reporter", required_argument, nullptr, kOptionCrashReporter},
+    {"crash-envelope", required_argument, nullptr, kOptionCrashEnvelope},
     {"help", no_argument, nullptr, kOptionHelp},
     {"version", no_argument, nullptr, kOptionVersion},
     {nullptr, 0, nullptr, 0},
@@ -953,13 +953,13 @@ int HandlerMain(int argc,
         break;
       }
 #endif
-      case kOptionFeedbackHandler: {
-        options.feedback_handler = base::FilePath(
+      case kOptionCrashReporter: {
+        options.crash_reporter = base::FilePath(
             ToolSupport::CommandLineArgumentToFilePathStringType(optarg));
         break;
       }
-      case kOptionFeedbackPath: {
-        options.feedback_path = base::FilePath(
+      case kOptionCrashEnvelope: {
+        options.crash_envelope = base::FilePath(
             ToolSupport::CommandLineArgumentToFilePathStringType(optarg));
         break;
       }
@@ -1155,8 +1155,8 @@ int HandlerMain(int argc,
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_WIN)
       ,options.wait_for_upload
 #endif
-      ,&options.feedback_handler
-      ,&options.feedback_path
+      ,&options.crash_reporter
+      ,&options.crash_envelope
   );
 #endif  // BUILDFLAG(IS_CHROMEOS_ASH) || BUILDFLAG(IS_CHROMEOS_LACROS)
 

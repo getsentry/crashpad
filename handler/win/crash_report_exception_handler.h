@@ -63,8 +63,8 @@ class CrashReportExceptionHandler final
       const base::FilePath* screenshot,
       const UserStreamDataSources* user_stream_data_sources,
       bool wait_for_upload,
-      const base::FilePath* feedback_handler,
-      const base::FilePath* feedback_path);
+      const base::FilePath* crash_reporter,
+      const base::FilePath* crash_envelope);
 
   CrashReportExceptionHandler(const CrashReportExceptionHandler&) = delete;
   CrashReportExceptionHandler& operator=(const CrashReportExceptionHandler&) =
@@ -93,8 +93,8 @@ class CrashReportExceptionHandler final
   std::vector<base::FilePath> attachments_;
   const base::FilePath* screenshot_;  // weak
   const bool wait_for_upload_;
-  const base::FilePath* feedback_handler_;  // weak
-  const base::FilePath* feedback_path_;  // weak
+  const base::FilePath* crash_reporter_;  // weak
+  const base::FilePath* crash_envelope_;  // weak
   const UserStreamDataSources* user_stream_data_sources_;  // weak
 };
 

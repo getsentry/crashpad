@@ -357,8 +357,8 @@ struct BackgroundHandlerStartThreadData {
       const std::vector<base::FilePath>& attachments,
       const base::FilePath& screenshot,
       const bool wait_for_upload,
-      const base::FilePath& feedback_handler,
-      const base::FilePath& feedback_path,
+      const base::FilePath& crash_reporter,
+      const base::FilePath& crash_envelope,
       const std::wstring& ipc_pipe,
       ScopedFileHANDLE ipc_pipe_handle)
       : handler(handler),
@@ -371,8 +371,8 @@ struct BackgroundHandlerStartThreadData {
         attachments(attachments),
         screenshot(screenshot),
         wait_for_upload(wait_for_upload),
-        feedback_handler(feedback_handler),
-        feedback_path(feedback_path),
+        crash_reporter(crash_reporter),
+        crash_envelope(crash_envelope),
         ipc_pipe(ipc_pipe),
         ipc_pipe_handle(std::move(ipc_pipe_handle)) {}
 
@@ -386,8 +386,8 @@ struct BackgroundHandlerStartThreadData {
   std::vector<base::FilePath> attachments;
   base::FilePath screenshot;
   bool wait_for_upload;
-  base::FilePath feedback_handler;
-  base::FilePath feedback_path;
+  base::FilePath crash_reporter;
+  base::FilePath crash_envelope;
   std::wstring ipc_pipe;
   ScopedFileHANDLE ipc_pipe_handle;
 };
@@ -465,15 +465,14 @@ bool StartHandlerProcess(
       AppendCommandLineArgument(L"--wait-for-upload", &command_line);
   }
 
-  if (!data->feedback_handler.empty()) {
+  if (!data->crash_reporter.empty()) {
     AppendCommandLineArgument(
-        FormatArgumentString("feedback-handler",
-                             data->feedback_handler.value()),
+        FormatArgumentString("crash-reporter", data->crash_reporter.value()),
         &command_line);
   }
-  if (!data->feedback_path.empty()) {
+  if (!data->crash_envelope.empty()) {
     AppendCommandLineArgument(
-        FormatArgumentString("feedback-path", data->feedback_path.value()),
+        FormatArgumentString("crash-envelope", data->crash_envelope.value()),
         &command_line);
   }
 
@@ -673,8 +672,8 @@ bool CrashpadClient::StartHandler(
     const std::vector<base::FilePath>& attachments,
     const base::FilePath& screenshot,
     bool wait_for_upload,
-    const base::FilePath& feedback_handler,
-    const base::FilePath& feedback_path) {
+    const base::FilePath& crash_reporter,
+    const base::FilePath& crash_envelope) {
   DCHECK(ipc_pipe_.empty());
 
   // Both the pipe and the signalling events have to be created on the main
@@ -708,8 +707,8 @@ bool CrashpadClient::StartHandler(
                                                    attachments,
                                                    screenshot,
                                                    wait_for_upload,
-                                                   feedback_handler,
-                                                   feedback_path,
+                                                   crash_reporter,
+                                                   crash_envelope,
                                                    ipc_pipe_,
                                                    std::move(ipc_pipe_handle));
 

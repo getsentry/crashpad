@@ -125,10 +125,10 @@ class CrashpadClient {
   //!     captured with each report at the time of the crash.
   //! \param[in] wait_for_upload If true, the handler will wait until the upload
   //!     process finishes before signaling shutdown.
-  //! \param[in] feedback_handler The path to a feedback handler executable that
-  //!     will be executed after a crash has been handled.
-  //! \param[in] feedback_path The path to a feedback envelope that will be
-  //!     filled up and passed as an argument to the feedback handler.
+  //! \param[in] crash_reporter The path to an external crash reporter
+  //!     executable that will be executed after a crash has been captured.
+  //! \param[in] crash_envelope The path to a crash report envelope that will be
+  //!     filled up and passed as an argument to the crash reporter.
   //!
   //! \return `true` on success, `false` on failure with a message logged.
   bool StartHandler(const base::FilePath& handler,
@@ -143,8 +143,8 @@ class CrashpadClient {
                     const std::vector<base::FilePath>& attachments = {},
                     const base::FilePath& screenshot = base::FilePath(),
                     bool wait_for_upload = false,
-                    const base::FilePath& feedback_handler = base::FilePath(),
-                    const base::FilePath& feedback_path = base::FilePath());
+                    const base::FilePath& crash_reporter = base::FilePath(),
+                    const base::FilePath& crash_envelope = base::FilePath());
 
 #if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || \
     DOXYGEN
