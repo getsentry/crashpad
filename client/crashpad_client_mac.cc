@@ -377,7 +377,7 @@ class HandlerStarter final : public NotifyServer::DefaultInterface {
     }
     if (!crash_envelope.empty()) {
       argv.push_back(
-          FormatArgumentString("crash-report", crash_envelope.value()));
+          FormatArgumentString("crash-envelope", crash_envelope.value()));
     }
 
     argv.push_back(FormatArgumentInt("handshake-fd", server_write_fd.get()));
