@@ -227,12 +227,14 @@ void CrashReportDatabase::Envelope::AddAttachments(
   for (const auto& attachment : attachments) {
     std::string contents;
     base::FilePath basename = attachment.BaseName();
+    const std::vector<base::FilePath> kFilter = {
 #if BUILDFLAG(IS_WIN)
-    constexpr std::wstring_view kInternalPrefix = L"__sentry-";
+        base::FilePath(L"__sentry-event"),
 #else
-    constexpr std::string_view kInternalPrefix = "__sentry-";
+        base::FilePath("__sentry-event"),
 #endif
-    if (basename.value().rfind(kInternalPrefix, 0) == 0 ||
+    };
+    if (std::find(kFilter.begin(), kFilter.end(), basename) != kFilter.end() ||
         !LoggingReadEntireFile(attachment, &contents)) {
       continue;
     }
