@@ -223,7 +223,9 @@ kern_return_t CrashReportExceptionHandler::CatchMachException(
       return KERN_FAILURE;
     }
 
-    if (upload_thread_ && !has_crash_reporter) {
+    if (has_crash_reporter) {
+      database_->DeleteReport(uuid);
+    } else if (upload_thread_) {
       upload_thread_->ReportPending(uuid);
     }
   }

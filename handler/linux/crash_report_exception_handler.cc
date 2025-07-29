@@ -319,7 +319,9 @@ bool CrashReportExceptionHandler::WriteMinidumpToDatabase(
     return false;
   }
 
-  if (upload_thread_ && !has_crash_reporter) {
+  if (has_crash_reporter) {
+    database_->DeleteReport(new_report->ReportID());
+  } else if (upload_thread_) {
     upload_thread_->ReportPending(uuid);
   }
 

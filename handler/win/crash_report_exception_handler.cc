@@ -179,7 +179,9 @@ unsigned int CrashReportExceptionHandler::ExceptionHandlerServerException(
       return termination_code;
     }
 
-    if (upload_thread_ && !has_crash_reporter) {
+    if (has_crash_reporter) {
+      database_->DeleteReport(uuid);
+    } else if (upload_thread_) {
       if (wait_for_upload_) {
         upload_thread_->ReportPendingSync(uuid);
       }
