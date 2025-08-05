@@ -725,7 +725,7 @@ void CrashReportDatabaseWin::LaunchCrashReporter(
   PROCESS_INFORMATION pi = {0};
   si.cb = sizeof(si);
 
-  BOOL rv = CreateProcessW(crash_reporter.value(),  // lpApplicationName
+  BOOL rv = CreateProcessW(crash_reporter.value().c_str(),  // lpApplicationName
                            command_line.data(),  // lpCommandLine
                            nullptr,  // lpProcessAttributes
                            nullptr,  // lpThreadAttributes
