@@ -347,7 +347,6 @@ base::FilePath CrashReportDatabaseMac::DatabasePath() {
 void CrashReportDatabaseMac::LaunchCrashReporter(
     const base::FilePath& crash_reporter,
     const base::FilePath& crash_envelope) {
-  bool use_path = true;
   std::vector<std::string> argv;
   if (crash_reporter.FinalExtension() == ".app") {
     argv = {
@@ -362,10 +361,9 @@ void CrashReportDatabaseMac::LaunchCrashReporter(
         crash_reporter.value(),
         crash_envelope.value(),
     };
-    use_path = !crash_reporter.IsAbsolute();
   }
 
-  SpawnSubprocess(argv, nullptr, 0, use_path, nullptr);
+  SpawnSubprocess(argv, nullptr, 0, false, nullptr);
 }
 
 Settings* CrashReportDatabaseMac::GetSettings() {

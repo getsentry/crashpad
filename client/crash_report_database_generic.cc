@@ -337,7 +337,7 @@ void CrashReportDatabaseGeneric::LaunchCrashReporter(
       },
       nullptr,
       -1,
-      !crash_reporter.IsAbsolute(),
+      false,
       nullptr);
 #endif
 }
