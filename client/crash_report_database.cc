@@ -77,6 +77,46 @@ base::FilePath EnsureUniqueFile(const base::FilePath& dir,
 
   return unique;
 }
+
+// Escapes a string for JSON (double quotes, backslash, control chars)
+std::string EscapeJsonString(const std::string& input) {
+  std::string output;
+  output.reserve(input.size() + 8);
+  for (char c : input) {
+    switch (c) {
+      case '\"':
+        output += "\\\"";
+        break;
+      case '\\':
+        output += "\\\\";
+        break;
+      case '\b':
+        output += "\\b";
+        break;
+      case '\f':
+        output += "\\f";
+        break;
+      case '\n':
+        output += "\\n";
+        break;
+      case '\r':
+        output += "\\r";
+        break;
+      case '\t':
+        output += "\\t";
+        break;
+      default:
+        if (static_cast<unsigned char>(c) < 0x20) {
+          char buf[7];
+          snprintf(buf, sizeof(buf), "\\u%04x", c);
+          output += buf;
+        } else {
+          output += c;
+        }
+    }
+  }
+  return output;
+}
 }  // namespace
 
 CrashReportDatabase::Report::Report()
@@ -226,14 +266,12 @@ void CrashReportDatabase::Envelope::AddAttachments(
     const std::vector<base::FilePath>& attachments) {
   for (const auto& attachment : attachments) {
     std::string contents;
-    base::FilePath basename = attachment.BaseName();
-    const std::vector<base::FilePath> kFilter = {
 #if BUILDFLAG(IS_WIN)
-        base::FilePath(L"__sentry-event"),
+    std::string basename = base::WideToUTF8(attachment.BaseName().value());
 #else
-        base::FilePath("__sentry-event"),
+    std::string basename = attachment.BaseName().value();
 #endif
-    };
+    const std::vector<std::string> kFilter = {"__sentry-event"};
     if (std::find(kFilter.begin(), kFilter.end(), basename) != kFilter.end() ||
         !LoggingReadEntireFile(attachment, &contents)) {
       continue;
@@ -245,7 +283,7 @@ void CrashReportDatabase::Envelope::AddAttachments(
         "\"attachment_type\": \"event.attachment\", "
         "\"filename\": \"%s\"}\n",
         contents.size(),
-        basename.value().c_str());
+        EscapeJsonString(basename).c_str());
     writer_->Write(header.data(), header.size());
     writer_->Write(contents.data(), contents.size());
   }
