@@ -90,7 +90,6 @@ add_library(crashpad_interface INTERFACE)
 target_include_directories(crashpad_interface INTERFACE
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/third_party/mini_chromium/mini_chromium>
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/third_party/msgpack-cxx/include>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/third_party/nlohmann-json/single_include>
 )
 target_compile_definitions(crashpad_interface INTERFACE
@@ -164,6 +163,7 @@ add_subdirectory(client)
 
 add_subdirectory(third_party/zlib)
 add_subdirectory(third_party/getopt)
+add_subdirectory(third_party/mpack)
 
 add_subdirectory(tools)
 add_subdirectory(handler)

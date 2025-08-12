@@ -24,8 +24,7 @@
 #include "util/file/file_helper.h"
 #include "util/file/filesystem.h"
 
-#define MSGPACK_NO_BOOST
-#include <msgpack.hpp>
+#include <mpack.h>
 #include <nlohmann/json.hpp>
 
 namespace crashpad {
@@ -35,11 +34,12 @@ constexpr base::FilePath::CharType kAttachmentsDirectory[] =
     FILE_PATH_LITERAL("attachments");
 
 std::string FixAttachmentName(std::string name) {
-  std::replace_if(name.begin(), name.end(), [&](char c) 
-  { 
-      return c != '_' && c != '-' && c != '.' && !isalnum(c);
-  }, '_');
-  
+  std::replace_if(
+      name.begin(),
+      name.end(),
+      [&](char c) { return c != '_' && c != '-' && c != '.' && !isalnum(c); },
+      '_');
+
   return name;
 }
 
@@ -327,12 +327,17 @@ void CrashReportDatabase::Envelope::AddEvent(
     size_t count = 0;
     size_t offset = 0;
     while (offset < contents.size()) {
-      msgpack::unpacked unpacked;
-      msgpack::unpack(unpacked, contents.data(), contents.size(), offset);
+      mpack_tree_t tree;
+      mpack_tree_init_data(
+          &tree, contents.data() + offset, contents.size() - offset);
+      mpack_tree_parse(&tree);
 
-      std::stringstream ss;
-      msgpack::pack(ss, unpacked.get());
-      all_breadcrumbs.push_back(nlohmann::ordered_json::from_msgpack(ss.str()));
+      size_t size = mpack_tree_size(&tree);
+      all_breadcrumbs.push_back(nlohmann::ordered_json::from_msgpack(
+          contents.data() + offset, contents.data() + offset + size));
+
+      mpack_tree_destroy(&tree);
+      offset += size;
       count++;
     }
     max_breadcrumbs = std::max(max_breadcrumbs, count);
