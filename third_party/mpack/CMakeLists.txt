@@ -2,6 +2,7 @@ add_library(crashpad_mpack STATIC
     src/mpack/mpack.c
     src/mpack/mpack.h
 )
+set_source_files_properties(src/mpack/mpack.c PROPERTIES LANGUAGE CXX)
 target_include_directories(crashpad_mpack PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>/src/mpack
 )
