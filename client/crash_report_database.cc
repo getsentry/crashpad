@@ -33,12 +33,11 @@ constexpr base::FilePath::CharType kAttachmentsDirectory[] =
     FILE_PATH_LITERAL("attachments");
 
 std::string FixAttachmentName(std::string name) {
-  std::replace_if(
-      name.begin(),
-      name.end(),
-      [&](char c) { return c != '_' && c != '-' && c != '.' && !isalnum(c); },
-      '_');
-
+  std::replace_if(name.begin(), name.end(), [&](char c) 
+  { 
+      return c != '_' && c != '-' && c != '.' && !isalnum(c);
+  }, '_');
+  
   return name;
 }
 
