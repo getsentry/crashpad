@@ -57,7 +57,6 @@ target_link_libraries(crashpad_handler_lib
     PUBLIC
         crashpad_compat
         crashpad_minidump
-        crashpad_mpack
         crashpad_snapshot
         crashpad_util
         mini_chromium

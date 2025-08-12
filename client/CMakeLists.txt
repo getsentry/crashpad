@@ -72,7 +72,6 @@ target_link_libraries(crashpad_client
         $<BUILD_INTERFACE:crashpad_interface>
     PUBLIC
         crashpad_compat
-        crashpad_mpack
         crashpad_util
         mini_chromium
 )
