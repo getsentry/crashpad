@@ -299,6 +299,7 @@ void CrashReportDatabase::Envelope::AddMinidump(FileReaderInterface* reader) {
       {"attachment_type", "event.minidump"},
       {"filename", uuid_.ToString() + ".dmp"},
   }).dump();
+  writer_->Write("\n", 1);
   writer_->Write(header.data(), header.size());
   writer_->Write("\n", 1);
   reader->Seek(0, SEEK_SET);
@@ -361,6 +362,7 @@ void CrashReportDatabase::Envelope::AddEvent(
     {"type", "event"},
     {"length", payload.size()},
   }).dump();
+  writer_->Write("\n", 1);
   writer_->Write(header.data(), header.size());
   writer_->Write("\n", 1);
   writer_->Write(payload.data(), payload.size());
@@ -369,8 +371,8 @@ void CrashReportDatabase::Envelope::AddEvent(
 
 void CrashReportDatabase::Envelope::AddAttachment(
     const base::FilePath& attachment) {
-  std::string contents;
-  if (!LoggingReadEntireFile(attachment, &contents)) {
+  std::string payload;
+  if (!LoggingReadEntireFile(attachment, &payload)) {
     return;
   }
 
@@ -382,13 +384,14 @@ void CrashReportDatabase::Envelope::AddAttachment(
 
   std::string header = nlohmann::json::object({
     {"type", "attachment"},
-    {"length", contents.size()},
+    {"length", payload.size()},
     {"attachment_type", "event.attachment"},
     {"filename", EscapeJsonString(basename)},
   }).dump();
+  writer_->Write("\n", 1);
   writer_->Write(header.data(), header.size());
   writer_->Write("\n", 1);
-  writer_->Write(contents.data(), contents.size());
+  writer_->Write(payload.data(), payload.size());
   writer_->Write("\n", 1);
 }
 
