@@ -238,7 +238,7 @@ struct object::implicit_type {
     operator T();
 
 private:
-    object const& obj;
+    [[maybe_unused]] object const& obj;
 };
 
 /// @cond

@@ -11,4 +11,5 @@ Description:
 MessagePack for C++
 
 Local Modifications:
-None.
+ - Add [[maybe_unused]] to object::implicit_type::obj in msgpack/v1/object_fwd.hpp
+   to suppress unused variable warnings with ClangCL on Windows.
