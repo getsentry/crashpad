@@ -24,6 +24,10 @@
 #include "util/file/file_helper.h"
 #include "util/file/filesystem.h"
 
+#define MSGPACK_NO_BOOST
+#include <msgpack.hpp>
+#include <nlohmann/json.hpp>
+
 namespace crashpad {
 
 namespace {
@@ -264,28 +268,28 @@ CrashReportDatabase::Envelope::Envelope(const UUID& uuid) : uuid_(uuid) {}
 
 void CrashReportDatabase::Envelope::AddAttachments(
     const std::vector<base::FilePath>& attachments) {
+  base::FilePath event;
+  std::vector<base::FilePath> breadcrumbs;
+  std::vector<base::FilePath> others;
+
   for (const auto& attachment : attachments) {
-    std::string contents;
 #if BUILDFLAG(IS_WIN)
     std::string basename = base::WideToUTF8(attachment.BaseName().value());
 #else
     std::string basename = attachment.BaseName().value();
 #endif
-    const std::vector<std::string> kFilter = {"__sentry-event"};
-    if (std::find(kFilter.begin(), kFilter.end(), basename) != kFilter.end() ||
-        !LoggingReadEntireFile(attachment, &contents)) {
-      continue;
+    if (basename == "__sentry-event") {
+      event = attachment;
+    } else if (basename.rfind("__sentry-breadcrumb", 0) == 0) {
+      breadcrumbs.push_back(attachment);
+    } else {
+      others.push_back(attachment);
     }
+  }
 
-    std::string header = base::StringPrintf(
-        "\n{\"type\": \"attachment\", "
-        "\"length\": %zu, "
-        "\"attachment_type\": \"event.attachment\", "
-        "\"filename\": \"%s\"}\n",
-        contents.size(),
-        EscapeJsonString(basename).c_str());
-    writer_->Write(header.data(), header.size());
-    writer_->Write(contents.data(), contents.size());
+  AddEvent(event, breadcrumbs);
+  for (const auto& attachment : others) {
+    AddAttachment(attachment);
   }
 }
 
@@ -301,6 +305,85 @@ void CrashReportDatabase::Envelope::AddMinidump(FileReaderInterface* reader) {
   writer_->Write(header.data(), header.size());
   reader->Seek(0, SEEK_SET);
   CopyFileContent(reader, writer_.get());
+}
+
+void CrashReportDatabase::Envelope::AddEvent(
+    const base::FilePath& event,
+    const std::vector<base::FilePath>& breadcrumbs) {
+  std::string contents;
+  if (!LoggingReadEntireFile(event, &contents) || contents.empty()) {
+    return;
+  }
+  nlohmann::ordered_json json = nlohmann::json::from_msgpack(contents);
+
+  // read all breadcrumb files
+  size_t max_breadcrumbs = 0;
+  std::vector<nlohmann::ordered_json> all_breadcrumbs;
+  for (const auto& breadcrumb : breadcrumbs) {
+    if (!LoggingReadEntireFile(breadcrumb, &contents) || contents.empty()) {
+      continue;
+    }
+
+    size_t count = 0;
+    size_t offset = 0;
+    while (offset < contents.size()) {
+      msgpack::unpacked unpacked;
+      msgpack::unpack(unpacked, contents.data(), contents.size(), offset);
+
+      std::stringstream ss;
+      msgpack::pack(ss, unpacked.get());
+      all_breadcrumbs.push_back(nlohmann::ordered_json::from_msgpack(ss.str()));
+      count++;
+    }
+    max_breadcrumbs = std::max(max_breadcrumbs, count);
+  }
+
+  // sort breadcrumbs by timestamp
+  std::sort(all_breadcrumbs.begin(),
+            all_breadcrumbs.end(),
+            [](const auto& a, const auto& b) {
+              return a["timestamp"] < b["timestamp"];
+            });
+
+  // limit to max_breadcrumbs
+  if (all_breadcrumbs.size() > max_breadcrumbs) {
+    all_breadcrumbs.erase(all_breadcrumbs.begin(),
+                          all_breadcrumbs.end() - max_breadcrumbs);
+  }
+  json["breadcrumbs"] = all_breadcrumbs;
+
+  // write event with breadcrumbs
+  std::string payload = json.dump();
+  std::string header = base::StringPrintf(
+      "\n{\"type\": \"event\", \"length\": %zu}\n", payload.size());
+  writer_->Write(header.data(), header.size());
+  payload.append("\n");
+  writer_->Write(payload.data(), payload.size());
+}
+
+void CrashReportDatabase::Envelope::AddAttachment(
+    const base::FilePath& attachment) {
+  const std::vector<std::string> kFilter = {"__sentry-event"};
+  std::string contents;
+  if (!LoggingReadEntireFile(attachment, &contents)) {
+    return;
+  }
+
+#if BUILDFLAG(IS_WIN)
+  std::string basename = base::WideToUTF8(attachment.BaseName().value());
+#else
+  std::string basename = attachment.BaseName().value();
+#endif
+
+  std::string header = base::StringPrintf(
+      "\n{\"type\": \"attachment\", "
+      "\"length\": %zu, "
+      "\"attachment_type\": \"event.attachment\", "
+      "\"filename\": \"%s\"}\n",
+      contents.size(),
+      EscapeJsonString(basename).c_str());
+  writer_->Write(header.data(), header.size());
+  writer_->Write(contents.data(), contents.size());
 }
 
 void CrashReportDatabase::Envelope::Finish() {

@@ -220,6 +220,10 @@ class CrashReportDatabase {
     void Finish();
 
    private:
+    void AddEvent(const base::FilePath& event,
+                  const std::vector<base::FilePath>& breadcrumbs);
+    void AddAttachment(const base::FilePath& attachment);
+
     UUID uuid_;
     base::FilePath path_;
     std::unique_ptr<FileWriter> writer_;
