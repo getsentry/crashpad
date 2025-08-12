@@ -103,7 +103,6 @@ if(NOT IOS)
             crashpad_getopt
             crashpad_handler_lib
             crashpad_minidump
-            crashpad_mpack
             crashpad_snapshot
             crashpad_tools
             crashpad_util
