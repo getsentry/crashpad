@@ -17,7 +17,6 @@
 #include <sys/stat.h>
 
 #include "base/logging.h"
-#include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
 #include "build/build_config.h"
 #include "util/file/directory_reader.h"
@@ -295,14 +294,14 @@ void CrashReportDatabase::Envelope::AddAttachments(
 
 void CrashReportDatabase::Envelope::AddMinidump(FileReaderInterface* reader) {
   FileOffset size = reader->Seek(0, SEEK_END);
-  std::string header = base::StringPrintf(
-      "\n{\"type\": \"attachment\", "
-      "\"length\": %zu, "
-      "\"attachment_type\": \"event.minidump\", "
-      "\"filename\": \"%s.dmp\"}\n",
-      static_cast<size_t>(size),
-      uuid_.ToString().c_str());
+  std::string header = nlohmann::json::object({
+      {"type", "attachment"},
+      {"length", size},
+      {"attachment_type", "event.minidump"},
+      {"filename", uuid_.ToString() + ".dmp"},
+  }).dump();
   writer_->Write(header.data(), header.size());
+  writer_->Write("\n", 1);
   reader->Seek(0, SEEK_SET);
   CopyFileContent(reader, writer_.get());
 }
@@ -359,16 +358,18 @@ void CrashReportDatabase::Envelope::AddEvent(
 
   // write event with breadcrumbs
   std::string payload = json.dump();
-  std::string header = base::StringPrintf(
-      "\n{\"type\": \"event\", \"length\": %zu}\n", payload.size());
+  std::string header = nlohmann::json::object({
+    {"type", "event"},
+    {"length", payload.size()},
+  }).dump();
   writer_->Write(header.data(), header.size());
-  payload.append("\n");
+  writer_->Write("\n", 1);
   writer_->Write(payload.data(), payload.size());
+  writer_->Write("\n", 1);
 }
 
 void CrashReportDatabase::Envelope::AddAttachment(
     const base::FilePath& attachment) {
-  const std::vector<std::string> kFilter = {"__sentry-event"};
   std::string contents;
   if (!LoggingReadEntireFile(attachment, &contents)) {
     return;
@@ -380,15 +381,16 @@ void CrashReportDatabase::Envelope::AddAttachment(
   std::string basename = attachment.BaseName().value();
 #endif
 
-  std::string header = base::StringPrintf(
-      "\n{\"type\": \"attachment\", "
-      "\"length\": %zu, "
-      "\"attachment_type\": \"event.attachment\", "
-      "\"filename\": \"%s\"}\n",
-      contents.size(),
-      EscapeJsonString(basename).c_str());
+  std::string header = nlohmann::json::object({
+    {"type", "attachment"},
+    {"length", contents.size()},
+    {"attachment_type", "event.attachment"},
+    {"filename", EscapeJsonString(basename)},
+  }).dump();
   writer_->Write(header.data(), header.size());
+  writer_->Write("\n", 1);
   writer_->Write(contents.data(), contents.size());
+  writer_->Write("\n", 1);
 }
 
 void CrashReportDatabase::Envelope::Finish() {
