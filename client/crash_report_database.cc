@@ -17,6 +17,7 @@
 #include <sys/stat.h>
 
 #include "base/logging.h"
+#include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
 #include "build/build_config.h"
 #include "util/file/directory_reader.h"
@@ -24,7 +25,6 @@
 #include "util/file/filesystem.h"
 
 #include <mpack.h>
-#include <nlohmann/json.hpp>
 
 namespace crashpad {
 
@@ -119,6 +119,60 @@ std::string EscapeJsonString(const std::string& input) {
   }
   return output;
 }
+
+std::string MpackToJsonString(mpack_node_t node) {
+  switch (mpack_node_type(node)) {
+    case mpack_type_nil:
+      return "null";
+    case mpack_type_bool:
+      return mpack_node_bool(node) ? "true" : "false";
+    case mpack_type_int:
+      return std::to_string(mpack_node_i64(node));
+    case mpack_type_uint:
+      return std::to_string(mpack_node_u64(node));
+    case mpack_type_float:
+      return std::to_string(mpack_node_float(node));
+    case mpack_type_double:
+      return std::to_string(mpack_node_double(node));
+    case mpack_type_str: {
+      return "\"" +
+             EscapeJsonString(
+                 std::string(mpack_node_str(node), mpack_node_strlen(node))) +
+             "\"";
+    }
+    case mpack_type_array: {
+      std::string result = "[";
+      size_t n = mpack_node_array_length(node);
+      for (size_t i = 0; i < n; ++i) {
+        if (i > 0) {
+          result += ",";
+        }
+        result += MpackToJsonString(mpack_node_array_at(node, i));
+      }
+      result += "]";
+      return result;
+    }
+    case mpack_type_map: {
+      std::string result = "{";
+      size_t n = mpack_node_map_count(node);
+      for (size_t i = 0; i < n; ++i) {
+        if (i > 0) {
+          result += ",";
+        }
+        mpack_node_t key = mpack_node_map_key_at(node, i);
+        mpack_node_t val = mpack_node_map_value_at(node, i);
+        std::string key_str(mpack_node_str(key), mpack_node_strlen(key));
+        result += "\"" + key_str + "\":" + MpackToJsonString(val);
+      }
+      result += "}";
+      return result;
+    }
+    default:
+      LOG(ERROR) << "Unsupported mpack node type: " << mpack_node_type(node);
+      return "";
+  }
+}
+
 }  // namespace
 
 CrashReportDatabase::Report::Report()
@@ -293,12 +347,13 @@ void CrashReportDatabase::Envelope::AddAttachments(
 
 void CrashReportDatabase::Envelope::AddMinidump(FileReaderInterface* reader) {
   FileOffset size = reader->Seek(0, SEEK_END);
-  std::string header = nlohmann::json::object({
-      {"type", "attachment"},
-      {"length", size},
-      {"attachment_type", "event.minidump"},
-      {"filename", uuid_.ToString() + ".dmp"},
-  }).dump();
+  std::string header = base::StringPrintf(
+      "{\"type\":\"attachment\","
+      "\"length\":%zu,"
+      "\"attachment_type\":\"event.minidump\","
+      "\"filename\":\"%s.dmp\"}",
+      static_cast<size_t>(size),
+      uuid_.ToString().c_str());
   writer_->Write("\n", 1);
   writer_->Write(header.data(), header.size());
   writer_->Write("\n", 1);
@@ -309,59 +364,79 @@ void CrashReportDatabase::Envelope::AddMinidump(FileReaderInterface* reader) {
 void CrashReportDatabase::Envelope::AddEvent(
     const base::FilePath& event,
     const std::vector<base::FilePath>& breadcrumbs) {
-  std::string contents;
-  if (!LoggingReadEntireFile(event, &contents) || contents.empty()) {
+  std::string event_data;
+  if (!LoggingReadEntireFile(event, &event_data)) {
     return;
   }
-  nlohmann::ordered_json json = nlohmann::json::from_msgpack(contents);
+
+  mpack_tree_t event_obj;
+  mpack_tree_init_data(&event_obj, event_data.data(), event_data.size());
+  mpack_tree_parse(&event_obj);
+  std::string event_json = MpackToJsonString(mpack_tree_root(&event_obj));
+  mpack_tree_destroy(&event_obj);
 
   // read all breadcrumb files
   size_t max_breadcrumbs = 0;
-  std::vector<nlohmann::ordered_json> all_breadcrumbs;
-  for (const auto& breadcrumb : breadcrumbs) {
-    if (!LoggingReadEntireFile(breadcrumb, &contents) || contents.empty()) {
+  std::vector<std::unique_ptr<mpack_tree_t, mpack_error_t (*)(mpack_tree_t*)>>
+      all_breadcrumbs;
+  std::vector<std::string> breadcrumb_datas(breadcrumbs.size());
+  for (size_t i = 0; i < breadcrumbs.size(); ++i) {
+    auto& breadcrumb_data = breadcrumb_datas[i];
+    if (!LoggingReadEntireFile(breadcrumbs[i], &breadcrumb_data)) {
       continue;
     }
 
     size_t count = 0;
     size_t offset = 0;
-    while (offset < contents.size()) {
-      mpack_tree_t tree;
-      mpack_tree_init_data(
-          &tree, contents.data() + offset, contents.size() - offset);
-      mpack_tree_parse(&tree);
+    while (offset < breadcrumb_data.size()) {
+      auto breadcrumb_obj =
+          std::unique_ptr<mpack_tree_t, mpack_error_t (*)(mpack_tree_t*)>(
+              new mpack_tree_t, mpack_tree_destroy);
+      mpack_tree_init_data(breadcrumb_obj.get(),
+                           breadcrumb_data.data() + offset,
+                           breadcrumb_data.size() - offset);
+      mpack_tree_parse(breadcrumb_obj.get());
 
-      size_t size = mpack_tree_size(&tree);
-      all_breadcrumbs.push_back(nlohmann::ordered_json::from_msgpack(
-          contents.data() + offset, contents.data() + offset + size));
+      size_t size = mpack_tree_size(breadcrumb_obj.get());
+      all_breadcrumbs.push_back(std::move(breadcrumb_obj));
 
-      mpack_tree_destroy(&tree);
       offset += size;
       count++;
     }
     max_breadcrumbs = std::max(max_breadcrumbs, count);
   }
 
-  // sort breadcrumbs by timestamp
+  // sort breadcrumbs by timestamp and limit to max_breadcrumbs
   std::sort(all_breadcrumbs.begin(),
             all_breadcrumbs.end(),
             [](const auto& a, const auto& b) {
-              return a["timestamp"] < b["timestamp"];
+              mpack_node_t ts_a =
+                  mpack_node_map_cstr(mpack_tree_root(a.get()), "timestamp");
+              mpack_node_t ts_b =
+                  mpack_node_map_cstr(mpack_tree_root(b.get()), "timestamp");
+              return strcmp(mpack_node_str(ts_a), mpack_node_str(ts_b)) < 0;
             });
-
-  // limit to max_breadcrumbs
-  if (all_breadcrumbs.size() > max_breadcrumbs) {
-    all_breadcrumbs.erase(all_breadcrumbs.begin(),
-                          all_breadcrumbs.end() - max_breadcrumbs);
+  std::string breadcrumbs_json;
+  size_t start = std::max<size_t>(0, all_breadcrumbs.size() - max_breadcrumbs);
+  for (size_t i = start; i < all_breadcrumbs.size(); ++i) {
+    if (!breadcrumbs_json.empty()) {
+      breadcrumbs_json += ",";
+    }
+    const auto& breadcrumb_tree = all_breadcrumbs[i];
+    breadcrumbs_json +=
+        MpackToJsonString(mpack_tree_root(breadcrumb_tree.get()));
   }
-  json["breadcrumbs"] = all_breadcrumbs;
 
   // write event with breadcrumbs
-  std::string payload = json.dump();
-  std::string header = nlohmann::json::object({
-    {"type", "event"},
-    {"length", payload.size()},
-  }).dump();
+  event_json.erase(0, 1);  // leading '{'
+  event_json.pop_back();  // trailing '}'
+  std::string payload = base::StringPrintf("{%s,\"breadcrumbs\":[%s]}",
+                                           event_json.c_str(),
+                                           breadcrumbs_json.c_str());
+  std::string header = base::StringPrintf(
+      "{\"type\":\"event\","
+      "\"length\":%zu}",
+      payload.size());
   writer_->Write("\n", 1);
   writer_->Write(header.data(), header.size());
   writer_->Write("\n", 1);
@@ -382,12 +457,13 @@ void CrashReportDatabase::Envelope::AddAttachment(
   std::string basename = attachment.BaseName().value();
 #endif
 
-  std::string header = nlohmann::json::object({
-    {"type", "attachment"},
-    {"length", payload.size()},
-    {"attachment_type", "event.attachment"},
-    {"filename", EscapeJsonString(basename)},
-  }).dump();
+  std::string header = base::StringPrintf(
+      "{\"type\":\"attachment\","
+      "\"length\":%zu,"
+      "\"attachment_type\":\"event.attachment\","
+      "\"filename\": \"%s\"}",
+      payload.size(),
+      EscapeJsonString(basename).c_str());
   writer_->Write("\n", 1);
   writer_->Write(header.data(), header.size());
   writer_->Write("\n", 1);
