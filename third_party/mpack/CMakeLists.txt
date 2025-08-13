@@ -1,9 +1,9 @@
 add_library(crashpad_mpack STATIC
-    src/mpack/mpack.cc
-    src/mpack/mpack.h
+    mpack.cc
+    mpack.h
 )
 target_include_directories(crashpad_mpack PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>/src/mpack
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
 )
 target_link_libraries(crashpad_mpack PRIVATE
     $<BUILD_INTERFACE:crashpad_interface>
