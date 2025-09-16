@@ -154,6 +154,14 @@ if(LINUX)
     )
 endif()
 
+if(APPLE)
+    target_compile_options(crashpad_interface INTERFACE
+        "-fobjc-arc"
+        "-fno-objc-arc-exceptions"
+        "-Wno-deprecated-declarations"
+    )
+endif()
+
 add_library(crashpad::interface ALIAS crashpad_interface)
 
 add_subdirectory(compat)

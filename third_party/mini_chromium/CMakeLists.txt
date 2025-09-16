@@ -145,12 +145,6 @@ else()
     )
 endif()
 
-if(APPLE)
-    target_compile_options(mini_chromium
-        PUBLIC "-fobjc-arc" "-fno-objc-arc-exceptions"
-        PRIVATE "-Wno-deprecated-declarations"
-    )
-endif()
 if(APPLE AND NOT IOS)
     target_link_libraries(mini_chromium PUBLIC
         "-framework ApplicationServices"
