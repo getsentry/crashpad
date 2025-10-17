@@ -429,6 +429,11 @@ static void HandleAddAttachmentV2(
     return;
   }
 
+  if (path_length_bytes % sizeof(wchar_t) != 0) {
+    LOG(ERROR) << "Invalid path length: not aligned to wchar_t boundary";
+    return;
+  }
+
   auto path_buffer =
       base::HeapArray<wchar_t>::Uninit(path_length_bytes / sizeof(wchar_t));
 
@@ -453,6 +458,11 @@ static void HandleRemoveAttachmentV2(
 
   if (path_length_bytes == 0 || path_length_bytes > kMaxPathBytes) {
     LOG(ERROR) << "Invalid path length: " << path_length_bytes;
+    return;
+  }
+
+  if (path_length_bytes % sizeof(wchar_t) != 0) {
+    LOG(ERROR) << "Invalid path length: not aligned to wchar_t boundary";
     return;
   }
 
