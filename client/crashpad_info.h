@@ -244,6 +244,23 @@ struct CrashpadInfo {
     indirectly_referenced_memory_cap_ = limit;
   }
 
+  //! \brief Enables or disables adjusting stack capture based on stack pointer.
+  //!
+  //! When handling an exception, the Crashpad handler will scan all modules in
+  //! a process. The first one that has a CrashpadInfo structure populated with
+  //! a value other than TriState::kUnset for this field will dictate whether
+  //! stack capture is adjusted.
+  //!
+  //! This causes Crashpad to calculate stack capture range based on the current
+  //! stack pointer instead of using TEB StackLimit/StackBase values. This is
+  //! useful when running under Wine/Proton where TEB values may be incorrect.
+  //!
+  //! \param[in] adjust_stack_capture Whether to adjust stack capture based on
+  //!     the stack pointer.
+  void set_adjust_stack_capture(TriState adjust_stack_capture) {
+    adjust_stack_capture_ = adjust_stack_capture;
+  }
+
   //! \brief Adds a custom stream to the minidump.
   //!
   //! The memory block referenced by \a data and \a size will added to the
@@ -329,7 +346,7 @@ struct CrashpadInfo {
   TriState crashpad_handler_behavior_;
   TriState system_crash_reporter_forwarding_;
   TriState gather_indirectly_referenced_memory_;
-  uint8_t padding_1_;
+  TriState adjust_stack_capture_;
   SimpleAddressRangeBag* extra_memory_ranges_;  // weak
   SimpleStringDictionary* simple_annotations_;  // weak
   internal::UserDataMinidumpStreamListEntry* user_data_minidump_stream_head_;

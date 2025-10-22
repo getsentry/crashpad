@@ -133,7 +133,7 @@ CrashpadInfo::CrashpadInfo()
       crashpad_handler_behavior_(TriState::kUnset),
       system_crash_reporter_forwarding_(TriState::kUnset),
       gather_indirectly_referenced_memory_(TriState::kUnset),
-      padding_1_(0),
+      adjust_stack_capture_(TriState::kUnset),
       extra_memory_ranges_(nullptr),
       simple_annotations_(nullptr),
       user_data_minidump_stream_head_(nullptr),

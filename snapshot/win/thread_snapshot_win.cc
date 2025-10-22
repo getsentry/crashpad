@@ -61,16 +61,61 @@ ThreadSnapshotWin::~ThreadSnapshotWin() {}
 bool ThreadSnapshotWin::Initialize(
     ProcessReaderWin* process_reader,
     const ProcessReaderWin::Thread& process_reader_thread,
-    uint32_t* gather_indirectly_referenced_memory_bytes_remaining) {
+    uint32_t* gather_indirectly_referenced_memory_bytes_remaining,
+    bool adjust_stack_capture) {
   INITIALIZATION_STATE_SET_INITIALIZING(initialized_);
 
   thread_ = process_reader_thread;
+
+  WinVMAddress stack_capture_address = thread_.stack_region_address;
+  WinVMSize stack_capture_size = thread_.stack_region_size;
+
+  // If adjust_stack_capture is enabled, calculate stack range based on current
+  // SP
+  if (adjust_stack_capture) {
+    WinVMAddress sp = 0;
+    WinVMAddress stack_base =
+        thread_.stack_region_address + thread_.stack_region_size;
+
+    // Get the stack pointer from the context
+#if defined(ARCH_CPU_X86)
+    sp = process_reader_thread.context.context<CONTEXT>()->Esp;
+#elif defined(ARCH_CPU_X86_64)
+    if (process_reader->Is64Bit()) {
+      sp = process_reader_thread.context.context<CONTEXT>()->Rsp;
+    } else {
+      sp = process_reader_thread.context.context<WOW64_CONTEXT>()->Esp;
+    }
+#elif defined(ARCH_CPU_ARM64)
+    sp = process_reader_thread.context.context<CONTEXT>()->Sp;
+#endif
+
+    // Verify SP is within the valid stack region
+    if (sp >= thread_.stack_region_address && sp < stack_base) {
+      // Account for potential red zone (128 bytes for x86_64)
+      const WinVMSize red_zone_size =
+#if defined(ARCH_CPU_X86_64)
+          process_reader->Is64Bit() ? 128 : 0;
+#else
+          0;
+#endif
+
+      // Adjust stack capture to start from SP (minus red zone) to stack base
+      WinVMAddress adjusted_start =
+          sp > red_zone_size ? sp - red_zone_size : sp;
+      if (adjusted_start >= thread_.stack_region_address &&
+          adjusted_start < stack_base) {
+        stack_capture_address = adjusted_start;
+        stack_capture_size = stack_base - adjusted_start;
+      }
+    }
+  }
+
   if (process_reader->GetProcessInfo().LoggingRangeIsFullyReadable(
-          CheckedRange<WinVMAddress, WinVMSize>(thread_.stack_region_address,
-                                                thread_.stack_region_size))) {
-    stack_.Initialize(process_reader->Memory(),
-                      thread_.stack_region_address,
-                      thread_.stack_region_size);
+          CheckedRange<WinVMAddress, WinVMSize>(stack_capture_address,
+                                                stack_capture_size))) {
+    stack_.Initialize(
+        process_reader->Memory(), stack_capture_address, stack_capture_size);
   } else {
     stack_.Initialize(process_reader->Memory(), 0, 0);
   }

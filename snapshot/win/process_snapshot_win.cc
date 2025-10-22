@@ -245,12 +245,18 @@ const ProcessMemory* ProcessSnapshotWin::Memory() const {
 void ProcessSnapshotWin::InitializeThreads(uint32_t* budget_remaining_pointer) {
   const std::vector<ProcessReaderWin::Thread>& process_reader_threads =
       process_reader_.Threads();
+
+  // Check if stack capture adjustment is enabled via CrashpadInfo
+  bool adjust_stack_capture =
+      options_.adjust_stack_capture == TriState::kEnabled;
+
   for (const ProcessReaderWin::Thread& process_reader_thread :
        process_reader_threads) {
     auto thread = std::make_unique<internal::ThreadSnapshotWin>();
     if (thread->Initialize(&process_reader_,
                            process_reader_thread,
-                           budget_remaining_pointer)) {
+                           budget_remaining_pointer,
+                           adjust_stack_capture)) {
       threads_.push_back(std::move(thread));
     }
   }
@@ -359,12 +365,16 @@ void ProcessSnapshotWin::GetCrashpadOptionsInternal(
       local_options.indirectly_referenced_memory_cap =
           module_options.indirectly_referenced_memory_cap;
     }
+    if (local_options.adjust_stack_capture == TriState::kUnset) {
+      local_options.adjust_stack_capture = module_options.adjust_stack_capture;
+    }
 
     // If non-default values have been found for all options, the loop can end
     // early.
     if (local_options.crashpad_handler_behavior != TriState::kUnset &&
         local_options.system_crash_reporter_forwarding != TriState::kUnset &&
-        local_options.gather_indirectly_referenced_memory != TriState::kUnset) {
+        local_options.gather_indirectly_referenced_memory != TriState::kUnset &&
+        local_options.adjust_stack_capture != TriState::kUnset) {
       break;
     }
   }

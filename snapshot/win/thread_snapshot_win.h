@@ -55,13 +55,16 @@ class ThreadSnapshotWin final : public ThreadSnapshot {
   //!     non-null, add extra memory regions to the snapshot pointed to by the
   //!     thread's stack. The size of the regions added is subtracted from the
   //!     count, and when it's `0`, no more regions will be added.
+  //! \param[in] adjust_stack_capture If `true`, adjust the stack capture
+  //!     based on the current stack pointer instead of using TEB values.
   //!
   //! \return `true` if the snapshot could be created, `false` otherwise with
   //!     an appropriate message logged.
   bool Initialize(
       ProcessReaderWin* process_reader,
       const ProcessReaderWin::Thread& process_reader_thread,
-      uint32_t* gather_indirectly_referenced_memory_bytes_remaining);
+      uint32_t* gather_indirectly_referenced_memory_bytes_remaining,
+      bool adjust_stack_capture = false);
 
   // ThreadSnapshot:
 
