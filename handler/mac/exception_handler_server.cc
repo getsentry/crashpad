@@ -19,6 +19,7 @@
 #include "base/apple/mach_logging.h"
 #include "base/check.h"
 #include "base/logging.h"
+#include "handler/mac/crash_report_exception_handler.h"
 #include "util/mach/composite_mach_message_server.h"
 #include "util/mach/mach_extensions.h"
 #include "util/mach/mach_message.h"
@@ -28,6 +29,49 @@
 namespace crashpad {
 
 namespace {
+
+// Custom server for handling payload messages
+class PayloadMessageServer : public MachMessageServer::Interface {
+ public:
+  PayloadMessageServer(PayloadMessageHandler* handler) : handler_(handler) {}
+
+  PayloadMessageServer(const PayloadMessageServer&) = delete;
+  PayloadMessageServer& operator=(const PayloadMessageServer&) = delete;
+
+  // MachMessageServer::Interface:
+
+  // Processes an incoming message and dispatches it to the appropriate handler.
+  bool MachMessageServerFunction(const mach_msg_header_t* in_header,
+                                 mach_msg_header_t* out_header,
+                                 bool* destroy_complex_request) override {
+    const PayloadMessage* message =
+        ReceivePayloadMessage(in_header, out_header);
+    if (message) {
+      if (handler_) {
+        handler_->HandlePayloadMessage(*message);
+      }
+      *destroy_complex_request = true;
+      return true;
+    }
+
+    return false;
+  }
+
+  std::set<mach_msg_id_t> MachMessageServerRequestIDs() override {
+    return {kPayloadMessageID};
+  }
+
+  mach_msg_size_t MachMessageServerRequestSize() override {
+    return sizeof(PayloadMessage);
+  }
+
+  mach_msg_size_t MachMessageServerReplySize() override {
+    return sizeof(mig_reply_error_t);  // Minimal size for a proper Mach reply message
+  }
+
+ private:
+  PayloadMessageHandler* handler_;  // weak
+};
 
 class ExceptionHandlerServerRun : public UniversalMachExcServer::Interface,
                                   public NotifyServer::DefaultInterface {
@@ -41,6 +85,7 @@ class ExceptionHandlerServerRun : public UniversalMachExcServer::Interface,
         NotifyServer::DefaultInterface(),
         mach_exc_server_(this),
         notify_server_(this),
+        payload_message_server_(dynamic_cast<CrashReportExceptionHandler*>(exception_interface)),
         composite_mach_message_server_(),
         exception_interface_(exception_interface),
         exception_port_(exception_port),
@@ -49,6 +94,7 @@ class ExceptionHandlerServerRun : public UniversalMachExcServer::Interface,
         launchd_(launchd) {
     composite_mach_message_server_.AddHandler(&mach_exc_server_);
     composite_mach_message_server_.AddHandler(&notify_server_);
+    composite_mach_message_server_.AddHandler(&payload_message_server_);
   }
 
   ExceptionHandlerServerRun(const ExceptionHandlerServerRun&) = delete;
@@ -182,6 +228,7 @@ class ExceptionHandlerServerRun : public UniversalMachExcServer::Interface,
  private:
   UniversalMachExcServer mach_exc_server_;
   NotifyServer notify_server_;
+  PayloadMessageServer payload_message_server_;
   CompositeMachMessageServer composite_mach_message_server_;
   UniversalMachExcServer::Interface* exception_interface_;  // weak
   mach_port_t exception_port_;  // weak

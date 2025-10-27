@@ -16,6 +16,7 @@
 
 #include <utility>
 #include <vector>
+#include <algorithm>
 
 #include "base/apple/mach_logging.h"
 #include "base/apple/scoped_mach_port.h"
@@ -55,10 +56,15 @@ CrashReportExceptionHandler::CrashReportExceptionHandler(
     : database_(database),
       upload_thread_(upload_thread),
       process_annotations_(process_annotations),
-      attachments_(attachments),
+      attachments_(),
       user_stream_data_sources_(user_stream_data_sources),
       crash_reporter_(crash_reporter),
-      crash_envelope_(crash_envelope) {}
+      crash_envelope_(crash_envelope) {
+  if (attachments) {
+    // Copy the attachments into our owned vector.
+    attachments_ = *attachments;
+  }
+}
 
 CrashReportExceptionHandler::~CrashReportExceptionHandler() {
 }
@@ -182,7 +188,7 @@ kern_return_t CrashReportExceptionHandler::CatchMachException(
       return KERN_FAILURE;
     }
 
-    for (const auto& attachment : (*attachments_)) {
+    for (const auto& attachment : attachments_) {
       FileReader file_reader;
       if (!file_reader.Open(attachment)) {
         LOG(ERROR) << "attachment " << attachment.value().c_str()
@@ -206,7 +212,7 @@ kern_return_t CrashReportExceptionHandler::CatchMachException(
     if (has_crash_reporter) {
       CrashReportDatabase::Envelope envelope(new_report->ReportID());
       if (envelope.Initialize(*crash_envelope_)) {
-        envelope.AddAttachments(*attachments_);
+        envelope.AddAttachments(attachments_);
         if (auto reader = new_report->Reader()) {
           envelope.AddMinidump(reader);
         }
@@ -304,6 +310,42 @@ kern_return_t CrashReportExceptionHandler::CatchMachException(
 
   Metrics::ExceptionCaptureResult(Metrics::CaptureResult::kSuccess);
   return KERN_SUCCESS;
+}
+
+void CrashReportExceptionHandler::HandlePayloadMessage(
+    const PayloadMessage& message) {
+  std::string payload(static_cast<const char*>(message.payload.address),
+                   message.payload.size - 1);
+
+  switch (message.type) {
+    case kAddAttachment:
+      AddAttachment(base::FilePath(payload));
+      break;
+    case kRemoveAttachment:
+      RemoveAttachment(base::FilePath(payload));
+      break;
+    default:
+      LOG(ERROR) << "unknown attachment message type: " << message.type;
+      break;
+  }
+}
+
+void CrashReportExceptionHandler::AddAttachment(const base::FilePath& attachment) {
+  auto it = std::find(attachments_.begin(), attachments_.end(), attachment);
+  if (it != attachments_.end()) {
+    LOG(WARNING) << "ignoring duplicate attachment " << attachment;
+    return;
+  }
+  attachments_.push_back(attachment);
+}
+
+void CrashReportExceptionHandler::RemoveAttachment(const base::FilePath& attachment) {
+  auto it = std::find(attachments_.begin(), attachments_.end(), attachment);
+  if (it == attachments_.end()) {
+    LOG(WARNING) << "ignoring non-existent attachment " << attachment;
+    return;
+  }
+  attachments_.erase(it);
 }
 
 }  // namespace crashpad

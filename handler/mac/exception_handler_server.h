@@ -19,8 +19,20 @@
 
 #include "base/apple/scoped_mach_port.h"
 #include "util/mach/exc_server_variants.h"
+#include "util/mach/payload_message.h"
 
 namespace crashpad {
+
+//! \brief Interface for handling payload messages
+class PayloadMessageHandler {
+ public:
+  virtual ~PayloadMessageHandler() {}
+
+  //! \brief Processes a payload message
+  //!
+  //! \param[in] message The message to process
+  virtual void HandlePayloadMessage(const PayloadMessage& message) = 0;
+};
 
 //! \brief Runs the main exception-handling server in Crashpad’s handler
 //!     process.

@@ -193,6 +193,8 @@ if(APPLE)
             mach/exception_types.h
             mach/notify_server.cc
             mach/notify_server.h
+            mach/payload_message.cc
+            mach/payload_message.h
             mach/scoped_task_suspend.cc
             mach/scoped_task_suspend.h
             mach/task_for_pid.cc

@@ -35,6 +35,7 @@
 #include "util/mach/mach_extensions.h"
 #include "util/mach/mach_message.h"
 #include "util/mach/notify_server.h"
+#include "util/mach/payload_message.h"
 #include "util/misc/clock.h"
 #include "util/misc/implicit_cast.h"
 #include "util/posix/spawn_subprocess.h"
@@ -607,6 +608,15 @@ void CrashpadClient::UseSystemDefaultHandler() {
   if (!SetCrashExceptionPorts(system_crash_reporter_handler.get())) {
     SetCrashExceptionPorts(MACH_PORT_NULL);
   }
+}
+
+void CrashpadClient::AddAttachment(const base::FilePath& attachment) {
+  SendPayloadMessage(exception_port_.get(), kAddAttachment, attachment.value());
+}
+
+void CrashpadClient::RemoveAttachment(const base::FilePath& attachment) {
+  SendPayloadMessage(
+      exception_port_.get(), kRemoveAttachment, attachment.value());
 }
 
 }  // namespace crashpad

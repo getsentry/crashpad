@@ -22,6 +22,7 @@
 
 #include "client/crash_report_database.h"
 #include "handler/crash_report_upload_thread.h"
+#include "handler/mac/exception_handler_server.h"
 #include "handler/user_stream_data_source.h"
 #include "util/mach/exc_server_variants.h"
 
@@ -30,7 +31,8 @@ namespace crashpad {
 //! \brief An exception handler that writes crash reports for exception messages
 //!     to a CrashReportDatabase.
 class CrashReportExceptionHandler final
-    : public UniversalMachExcServer::Interface {
+    : public UniversalMachExcServer::Interface,
+      public PayloadMessageHandler {
  public:
   //! \brief Creates a new object that will store crash reports in \a database.
   //!
@@ -89,11 +91,27 @@ class CrashReportExceptionHandler final
       const mach_msg_trailer_t* trailer,
       bool* destroy_complex_request) override;
 
+  // PayloadMessageHandler:
+
+  //! \brief Processes a payload message by adding or removing an attachment
+  //!     to or from the attachments vector.
+  void HandlePayloadMessage(const PayloadMessage& message) override;
+
+  //! \brief Adds an attachment to the attachments list.
+  //!
+  //! \param[in] path The path of the attachment to add.
+  void AddAttachment(const base::FilePath& path);
+
+  //! \brief Removes an attachment from the attachments list.
+  //!
+  //! \param[in] path The path of the attachment to remove.
+  void RemoveAttachment(const base::FilePath& path);
+
  private:
   CrashReportDatabase* database_;  // weak
   CrashReportUploadThread* upload_thread_;  // weak
   const std::map<std::string, std::string>* process_annotations_;  // weak
-  const std::vector<base::FilePath>* attachments_;  // weak
+  std::vector<base::FilePath> attachments_;  // owned
   const UserStreamDataSources* user_stream_data_sources_;  // weak
   const base::FilePath* crash_reporter_;  // weak
   const base::FilePath* crash_envelope_;  // weak
