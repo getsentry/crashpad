@@ -107,7 +107,7 @@ bool ThreadSnapshotWin::Initialize(
     ProcessReaderWin* process_reader,
     const ProcessReaderWin::Thread& process_reader_thread,
     uint32_t* gather_indirectly_referenced_memory_bytes_remaining,
-    bool adjust_stack_capture) {
+    bool limit_stack_capture_to_sp) {
   INITIALIZATION_STATE_SET_INITIALIZING(initialized_);
 
   thread_ = process_reader_thread;
@@ -115,8 +115,8 @@ bool ThreadSnapshotWin::Initialize(
   WinVMAddress stack_capture_address = thread_.stack_region_address;
   WinVMSize stack_capture_size = thread_.stack_region_size;
 
-  // If adjust_stack_capture is enabled, calculate stack range based on current SP
-  if (adjust_stack_capture) {
+  // If limit_stack_capture_to_sp is enabled, calculate stack range based on current SP
+  if (limit_stack_capture_to_sp) {
     AdjustStackCaptureRange(
         process_reader, thread_, &stack_capture_address, &stack_capture_size);
   }

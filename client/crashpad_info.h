@@ -244,12 +244,12 @@ struct CrashpadInfo {
     indirectly_referenced_memory_cap_ = limit;
   }
 
-  //! \brief Enables or disables adjusting stack capture based on stack pointer.
+  //! \brief Limits stack capture to stack pointer.
   //!
   //! When handling an exception, the Crashpad handler will scan all modules in
   //! a process. The first one that has a CrashpadInfo structure populated with
   //! a value other than TriState::kUnset for this field will dictate whether
-  //! stack capture is adjusted.
+  //! stack capture is limited.
   //!
   //! This causes Crashpad to use the current stack pointer as the upper bound
   //! of the stack capture range, once validated to be within TEB
@@ -257,10 +257,10 @@ struct CrashpadInfo {
   //! using the full TEB-derived stack region. This is useful when running under
   //! Wine/Proton where TEB values may be incorrect.
   //!
-  //! \param[in] adjust_stack_capture Whether to adjust stack capture based on
+  //! \param[in] limit_stack_capture_to_sp Whether to limit stack capture to
   //!     the stack pointer.
-  void set_adjust_stack_capture(TriState adjust_stack_capture) {
-    adjust_stack_capture_ = adjust_stack_capture;
+  void set_limit_stack_capture_to_sp(TriState limit_stack_capture_to_sp) {
+    limit_stack_capture_to_sp_ = limit_stack_capture_to_sp;
   }
 
   //! \brief Adds a custom stream to the minidump.
@@ -348,7 +348,7 @@ struct CrashpadInfo {
   TriState crashpad_handler_behavior_;
   TriState system_crash_reporter_forwarding_;
   TriState gather_indirectly_referenced_memory_;
-  TriState adjust_stack_capture_;
+  TriState limit_stack_capture_to_sp_;
   SimpleAddressRangeBag* extra_memory_ranges_;  // weak
   SimpleStringDictionary* simple_annotations_;  // weak
   internal::UserDataMinidumpStreamListEntry* user_data_minidump_stream_head_;

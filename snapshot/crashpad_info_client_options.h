@@ -66,8 +66,8 @@ struct CrashpadInfoClientOptions {
   //! \sa CrashpadInfo::set_gather_indirectly_referenced_memory()
   uint32_t indirectly_referenced_memory_cap;
 
-  //! \sa CrashpadInfo::set_adjust_stack_capture()
-  TriState adjust_stack_capture;
+  //! \sa CrashpadInfo::set_limit_stack_capture_to_sp()
+  TriState limit_stack_capture_to_sp;
 };
 
 }  // namespace crashpad
