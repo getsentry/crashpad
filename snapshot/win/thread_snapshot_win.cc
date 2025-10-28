@@ -46,6 +46,51 @@ XSAVE_CET_U_FORMAT* LocateXStateCetU(CONTEXT* context) {
       locate_xstate_feature(context, XSTATE_CET_U, &cet_u_size));
 }
 #endif  // defined(ARCH_CPU_X86_64)
+
+// Helper function to adjust stack capture range based on current stack pointer
+bool AdjustStackCaptureRange(ProcessReaderWin* process_reader,
+                              const ProcessReaderWin::Thread& thread,
+                              WinVMAddress* stack_capture_address,
+                              WinVMSize* stack_capture_size) {
+  WinVMAddress sp = 0;
+  WinVMAddress stack_base = thread.stack_region_address + thread.stack_region_size;
+
+  // Get the stack pointer from the context
+#if defined(ARCH_CPU_X86)
+  sp = thread.context.context<CONTEXT>()->Esp;
+#elif defined(ARCH_CPU_X86_64)
+  if (process_reader->Is64Bit()) {
+    sp = thread.context.context<CONTEXT>()->Rsp;
+  } else {
+    sp = thread.context.context<WOW64_CONTEXT>()->Esp;
+  }
+#elif defined(ARCH_CPU_ARM64)
+  sp = thread.context.context<CONTEXT>()->Sp;
+#endif
+
+  // Verify SP is within the valid stack region
+  if (sp >= thread.stack_region_address && sp < stack_base) {
+    // Account for potential red zone
+    // Windows x64 follows Microsoft x64 calling convention and has no red zone
+    // ARM64 has a 16-byte red zone
+    const WinVMSize red_zone_size =
+#if defined(ARCH_CPU_ARM64)
+        16;
+#else
+        0;
+#endif
+
+    // Adjust stack capture to start from SP (minus red zone) to stack base
+    WinVMAddress adjusted_start = sp > red_zone_size ? sp - red_zone_size : sp;
+    if (adjusted_start >= thread.stack_region_address && adjusted_start < stack_base) {
+      *stack_capture_address = adjusted_start;
+      *stack_capture_size = stack_base - adjusted_start;
+      return true;
+    }
+  }
+  return false;
+}
+
 }  // namespace
 
 ThreadSnapshotWin::ThreadSnapshotWin()
@@ -70,45 +115,10 @@ bool ThreadSnapshotWin::Initialize(
   WinVMAddress stack_capture_address = thread_.stack_region_address;
   WinVMSize stack_capture_size = thread_.stack_region_size;
 
-  // If adjust_stack_capture is enabled, calculate stack range based on current
-  // SP
+  // If adjust_stack_capture is enabled, calculate stack range based on current SP
   if (adjust_stack_capture) {
-    WinVMAddress sp = 0;
-    WinVMAddress stack_base =
-        thread_.stack_region_address + thread_.stack_region_size;
-
-    // Get the stack pointer from the context
-#if defined(ARCH_CPU_X86)
-    sp = process_reader_thread.context.context<CONTEXT>()->Esp;
-#elif defined(ARCH_CPU_X86_64)
-    if (process_reader->Is64Bit()) {
-      sp = process_reader_thread.context.context<CONTEXT>()->Rsp;
-    } else {
-      sp = process_reader_thread.context.context<WOW64_CONTEXT>()->Esp;
-    }
-#elif defined(ARCH_CPU_ARM64)
-    sp = process_reader_thread.context.context<CONTEXT>()->Sp;
-#endif
-
-    // Verify SP is within the valid stack region
-    if (sp >= thread_.stack_region_address && sp < stack_base) {
-      // Account for potential red zone (128 bytes for x86_64)
-      const WinVMSize red_zone_size =
-#if defined(ARCH_CPU_X86_64)
-          process_reader->Is64Bit() ? 128 : 0;
-#else
-          0;
-#endif
-
-      // Adjust stack capture to start from SP (minus red zone) to stack base
-      WinVMAddress adjusted_start =
-          sp > red_zone_size ? sp - red_zone_size : sp;
-      if (adjusted_start >= thread_.stack_region_address &&
-          adjusted_start < stack_base) {
-        stack_capture_address = adjusted_start;
-        stack_capture_size = stack_base - adjusted_start;
-      }
-    }
+    AdjustStackCaptureRange(
+        process_reader, thread_, &stack_capture_address, &stack_capture_size);
   }
 
   if (process_reader->GetProcessInfo().LoggingRangeIsFullyReadable(

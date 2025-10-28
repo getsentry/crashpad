@@ -251,9 +251,11 @@ struct CrashpadInfo {
   //! a value other than TriState::kUnset for this field will dictate whether
   //! stack capture is adjusted.
   //!
-  //! This causes Crashpad to calculate stack capture range based on the current
-  //! stack pointer instead of using TEB StackLimit/StackBase values. This is
-  //! useful when running under Wine/Proton where TEB values may be incorrect.
+  //! This causes Crashpad to use the current stack pointer as the upper bound
+  //! of the stack capture range, once validated to be within TEB
+  //! StackLimit/StackBase values. This reduces the capture range compared to
+  //! using the full TEB-derived stack region. This is useful when running under
+  //! Wine/Proton where TEB values may be incorrect.
   //!
   //! \param[in] adjust_stack_capture Whether to adjust stack capture based on
   //!     the stack pointer.
