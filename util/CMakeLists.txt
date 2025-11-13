@@ -255,6 +255,11 @@ if(LINUX OR ANDROID)
 
         target_link_libraries(crashpad_util PRIVATE CURL::libcurl)
         SET(HTTP_TRANSPORT_IMPL net/http_transport_libcurl.cc)
+
+        target_compile_options(crashpad_util PRIVATE
+            # Clang >= 20 complains about thread_info.cc memsetting nontrivially copyable types
+            $<$<AND:$<COMPILE_LANGUAGE:C,CXX>,$<C_COMPILER_ID:Clang>,$<VERSION_GREATER_EQUAL:$<CXX_COMPILER_VERSION>,20>>:-Wno-nontrivial-memcall>
+        )
     else()
         find_package(OpenSSL)
         if(OPENSSL_FOUND)
