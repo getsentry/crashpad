@@ -147,6 +147,7 @@ if (WIN32)
 
     set_property(TARGET crashpad_wer PROPERTY EXPORT_NAME crashpad_wer)
     set_property(TARGET crashpad_wer PROPERTY PREFIX "") # ensure MINGW doesn't prefix "lib" to dll name
+    set_property(TARGET crashpad_wer PROPERTY DEBUG_POSTFIX "") # prevent CMAKE_DEBUG_POSTFIX from being applied
     add_library(crashpad::wer ALIAS crashpad_wer)
 
     if (COMMAND sentry_add_version_resource)
