@@ -32,6 +32,9 @@
 #include "client/settings.h"
 #include "util/file/directory_reader.h"
 #include "util/file/filesystem.h"
+#include "util/file/file_helper.h"
+#include "util/file/file_reader.h"
+#include "util/file/file_writer.h"
 #include "util/misc/implicit_cast.h"
 #include "util/misc/initialization_state_dcheck.h"
 #include "util/misc/metrics.h"
@@ -43,6 +46,7 @@ namespace {
 
 constexpr wchar_t kReportsDirectory[] = L"reports";
 constexpr wchar_t kMetadataFileName[] = L"metadata";
+constexpr wchar_t kCacheDirectory[] = L"cache";
 
 constexpr wchar_t kSettings[] = L"settings.dat";
 
@@ -617,6 +621,44 @@ bool CreateDirectoryIfNecessary(const base::FilePath& path) {
   return EnsureDirectory(path);
 }
 
+//! \brief Copies a crash report file to the cache directory for indefinite
+//!     storage.
+//!
+//! This creates a copy of the crash dump file in the cache directory that will
+//! not be cleaned up by CleanDatabase(), allowing it to persist indefinitely
+//! for local debugging purposes.
+//!
+//! \param[in] source_path The path to the source crash report file.
+//! \param[in] cache_dir The cache directory path.
+//!
+//! \return `true` if the file was successfully copied, `false` otherwise.
+bool CopyCrashReportToCache(const base::FilePath& source_path,
+                             const base::FilePath& cache_dir) {
+  // Generate cache file path using the same filename as the source
+  base::FilePath cache_path = cache_dir.Append(source_path.BaseName());
+
+  // Open source file for reading
+  FileReader reader;
+  if (!reader.Open(source_path)) {
+    LOG(ERROR) << "Failed to open source file for cache copy: " << source_path;
+    return false;
+  }
+
+  // Open destination file for writing
+  FileWriter writer;
+  if (!writer.Open(cache_path,
+                   FileWriteMode::kCreateOrFail,
+                   FilePermissions::kOwnerOnly)) {
+    LOG(ERROR) << "Failed to open cache file for writing: " << cache_path;
+    return false;
+  }
+
+  // Copy the file contents
+  CopyFileContent(&reader, &writer);
+
+  return true;
+}
+
 }  // namespace
 
 // CrashReportDatabaseWin ------------------------------------------------------
@@ -699,6 +741,9 @@ bool CrashReportDatabaseWin::Initialize(bool may_create) {
 
   // Ensure that the report subdirectory exists.
   if (!CreateDirectoryIfNecessary(base_dir_.Append(kReportsDirectory)))
+    return false;
+  // Ensure that the cache subdirectory exists.
+  if (!CreateDirectoryIfNecessary(base_dir_.Append(kCacheDirectory)))
     return false;
 
   if (!CreateDirectoryIfNecessary(AttachmentsRootPath()))
@@ -787,6 +832,17 @@ OperationStatus CrashReportDatabaseWin::FinishedWritingCrashReport(
   }
 
   *uuid = report->ReportID();
+
+  // Copy the crash report to the cache directory for indefinite storage
+  base::FilePath cache_dir = base_dir_.Append(kCacheDirectory);
+  if (!CopyCrashReportToCache(report->file_remover_.get(), cache_dir)) {
+    LOG(WARNING)
+        << "[SENTRY-UNREAL] Failed to copy crash report to cache directory";
+    // Continue anyway - this is a non-critical operation
+  } else {
+    LOG(INFO) << "[SENTRY-UNREAL] Successfully copied crash report to cache "
+                 "directory";
+  }
 
   Metrics::CrashReportPending(Metrics::PendingReportReason::kNewlyCreated);
   Metrics::CrashReportSize(report->Writer()->Seek(0, SEEK_END));
