@@ -11,4 +11,5 @@ Description:
 A C encoder/decoder for the MessagePack serialization format
 
 Local Modifications:
-Renamed mpack.c to mpack.cc.
+- Renamed mpack.c to mpack.cc.
+- Wrapped in crashpad namespace.

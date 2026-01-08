@@ -1066,8 +1066,8 @@ void mpack_assert_fail(const char* message);
  */
 
 #ifdef __cplusplus
-    #define MPACK_EXTERN_C_BEGIN extern "C" {
-    #define MPACK_EXTERN_C_END   }
+    #define MPACK_EXTERN_C_BEGIN /*nothing*/
+    #define MPACK_EXTERN_C_END   /*nothing*/
 #else
     #define MPACK_EXTERN_C_BEGIN /*nothing*/
     #define MPACK_EXTERN_C_END   /*nothing*/
@@ -1173,6 +1173,7 @@ void mpack_assert_fail(const char* message);
 
 MPACK_SILENCE_WARNINGS_BEGIN
 MPACK_EXTERN_C_BEGIN
+namespace crashpad {
 
 
 
@@ -8197,6 +8198,7 @@ bool mpack_node_map_contains_cstr(mpack_node_t node, const char* cstr);
 
 #endif
 
+}  // namespace crashpad
 MPACK_EXTERN_C_END
 MPACK_SILENCE_WARNINGS_END
 

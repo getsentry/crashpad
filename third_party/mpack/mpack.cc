@@ -34,6 +34,7 @@
 
 #include "mpack.h"
 
+namespace crashpad {
 
 /* mpack/mpack-platform.c.c */
 
@@ -7302,3 +7303,5 @@ mpack_node_t mpack_node_map_value_at(mpack_node_t node, size_t index) {
 #endif
 
 MPACK_SILENCE_WARNINGS_END
+
+}  // namespace crashpad
