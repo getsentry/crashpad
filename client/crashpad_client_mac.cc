@@ -141,6 +141,7 @@ class HandlerStarter final : public NotifyServer::DefaultInterface {
       const std::vector<base::FilePath>& attachments,
       const base::FilePath& crash_reporter,
       const base::FilePath& crash_envelope,
+      const std::string& report_id,
       bool restartable) {
     base::apple::ScopedMachReceiveRight receive_right(
         NewMachPort(MACH_PORT_RIGHT_RECEIVE));
@@ -184,6 +185,7 @@ class HandlerStarter final : public NotifyServer::DefaultInterface {
                      attachments,
                      crash_reporter,
                      crash_envelope,
+                     report_id,
                      std::move(receive_right),
                      handler_restarter.get(),
                      false)) {
@@ -200,7 +202,8 @@ class HandlerStarter final : public NotifyServer::DefaultInterface {
                                               arguments,
                                               attachments,
                                               crash_reporter,
-                                              crash_envelope)) {
+                                              crash_envelope,
+                                              report_id)) {
       // The thread owns the object now.
       std::ignore = handler_restarter.release();
     }
@@ -239,6 +242,7 @@ class HandlerStarter final : public NotifyServer::DefaultInterface {
                 attachments_,
                 crash_reporter_,
                 crash_envelope_,
+                report_id_,
                 base::apple::ScopedMachReceiveRight(rights),
                 this,
                 true);
@@ -258,6 +262,7 @@ class HandlerStarter final : public NotifyServer::DefaultInterface {
         attachments_(),
         crash_reporter_(),
         crash_envelope_(),
+        report_id_(),
         notify_port_(NewMachPort(MACH_PORT_RIGHT_RECEIVE)),
         last_start_time_(0) {}
 
@@ -290,6 +295,7 @@ class HandlerStarter final : public NotifyServer::DefaultInterface {
                           const std::vector<base::FilePath>& attachments,
                           const base::FilePath& crash_reporter,
                           const base::FilePath& crash_envelope,
+                          const std::string& report_id,
                           base::apple::ScopedMachReceiveRight receive_right,
                           HandlerStarter* handler_restarter,
                           bool restart) {
@@ -387,6 +393,10 @@ class HandlerStarter final : public NotifyServer::DefaultInterface {
           FormatArgumentString("crash-envelope", crash_envelope.value()));
     }
 
+    if (!report_id.empty()) {
+      argv.push_back(FormatArgumentString("report-id", report_id));
+    }
+
     argv.push_back(FormatArgumentInt("handshake-fd", server_write_fd.get()));
 
     // When restarting, reset the system default crash handler first. Otherwise,
@@ -426,7 +436,8 @@ class HandlerStarter final : public NotifyServer::DefaultInterface {
                           const std::vector<std::string>& arguments,
                           const std::vector<base::FilePath>& attachments,
                           const base::FilePath& crash_reporter,
-                          const base::FilePath& crash_envelope) {
+                          const base::FilePath& crash_envelope,
+                          const std::string& report_id) {
     handler_ = handler;
     database_ = database;
     metrics_dir_ = metrics_dir;
@@ -437,6 +448,7 @@ class HandlerStarter final : public NotifyServer::DefaultInterface {
     attachments_ = attachments;
     crash_reporter_ = crash_reporter;
     crash_envelope_ = crash_envelope;
+    report_id_ = report_id;
 
     pthread_attr_t pthread_attr;
     errno = pthread_attr_init(&pthread_attr);
@@ -493,6 +505,7 @@ class HandlerStarter final : public NotifyServer::DefaultInterface {
   std::vector<base::FilePath> attachments_;
   base::FilePath crash_reporter_;
   base::FilePath crash_envelope_;
+  std::string report_id_;
   base::apple::ScopedMachReceiveRight notify_port_;
   uint64_t last_start_time_;
 };
@@ -519,7 +532,8 @@ bool CrashpadClient::StartHandler(
     const base::FilePath& screenshot,
     bool wait_for_upload,
     const base::FilePath& crash_reporter,
-    const base::FilePath& crash_envelope) {
+    const base::FilePath& crash_envelope,
+    const std::string& report_id) {
   (void) wait_for_upload; // unused in mac (for now)
 
   // The “restartable” behavior can only be selected on OS X 10.10 and later. In
@@ -536,6 +550,7 @@ bool CrashpadClient::StartHandler(
       attachments,
       crash_reporter,
       crash_envelope,
+      report_id,
       restartable && (__MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_10_10 ||
                       MacOSVersionNumber() >= 10'10'00)));
   if (!exception_port.is_valid()) {

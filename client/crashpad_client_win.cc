@@ -359,6 +359,7 @@ struct BackgroundHandlerStartThreadData {
       const bool wait_for_upload,
       const base::FilePath& crash_reporter,
       const base::FilePath& crash_envelope,
+      const std::string& report_id,
       const std::wstring& ipc_pipe,
       ScopedFileHANDLE ipc_pipe_handle)
       : handler(handler),
@@ -373,6 +374,7 @@ struct BackgroundHandlerStartThreadData {
         wait_for_upload(wait_for_upload),
         crash_reporter(crash_reporter),
         crash_envelope(crash_envelope),
+        report_id(report_id),
         ipc_pipe(ipc_pipe),
         ipc_pipe_handle(std::move(ipc_pipe_handle)) {}
 
@@ -388,6 +390,7 @@ struct BackgroundHandlerStartThreadData {
   bool wait_for_upload;
   base::FilePath crash_reporter;
   base::FilePath crash_envelope;
+  std::string report_id;
   std::wstring ipc_pipe;
   ScopedFileHANDLE ipc_pipe_handle;
 };
@@ -473,6 +476,11 @@ bool StartHandlerProcess(
   if (!data->crash_envelope.empty()) {
     AppendCommandLineArgument(
         FormatArgumentString("crash-envelope", data->crash_envelope.value()),
+        &command_line);
+  }
+  if (!data->report_id.empty()) {
+    AppendCommandLineArgument(
+        FormatArgumentString("report-id", base::UTF8ToWide(data->report_id)),
         &command_line);
   }
 
@@ -674,7 +682,8 @@ bool CrashpadClient::StartHandler(
     const base::FilePath& screenshot,
     bool wait_for_upload,
     const base::FilePath& crash_reporter,
-    const base::FilePath& crash_envelope) {
+    const base::FilePath& crash_envelope,
+    const std::string& report_id) {
   DCHECK(ipc_pipe_.empty());
 
   // Both the pipe and the signalling events have to be created on the main
@@ -710,6 +719,7 @@ bool CrashpadClient::StartHandler(
                                                    wait_for_upload,
                                                    crash_reporter,
                                                    crash_envelope,
+                                                   report_id,
                                                    ipc_pipe_,
                                                    std::move(ipc_pipe_handle));
 

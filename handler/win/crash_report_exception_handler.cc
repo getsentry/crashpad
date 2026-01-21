@@ -43,7 +43,8 @@ CrashReportExceptionHandler::CrashReportExceptionHandler(
     const UserStreamDataSources* user_stream_data_sources,
     const bool wait_for_upload,
     const base::FilePath* crash_reporter,
-    const base::FilePath* crash_envelope)
+    const base::FilePath* crash_envelope,
+    const UUID* report_id)
     : database_(database),
       upload_thread_(upload_thread),
       process_annotations_(process_annotations),
@@ -52,6 +53,7 @@ CrashReportExceptionHandler::CrashReportExceptionHandler(
       wait_for_upload_(wait_for_upload),
       crash_reporter_(crash_reporter),
       crash_envelope_(crash_envelope),
+      report_id_(report_id),
       user_stream_data_sources_(user_stream_data_sources) {}
 
 CrashReportExceptionHandler::~CrashReportExceptionHandler() {}
@@ -99,7 +101,7 @@ unsigned int CrashReportExceptionHandler::ExceptionHandlerServerException(
 
     std::unique_ptr<CrashReportDatabase::NewReport> new_report;
     CrashReportDatabase::OperationStatus database_status =
-        database_->PrepareNewCrashReport(&new_report);
+        database_->PrepareNewCrashReport(&new_report, report_id_);
     if (database_status != CrashReportDatabase::kNoError) {
       LOG(ERROR) << "PrepareNewCrashReport failed";
       Metrics::ExceptionCaptureResult(

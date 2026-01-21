@@ -129,6 +129,8 @@ class CrashpadClient {
   //!     executable that will be executed after a crash has been captured.
   //! \param[in] crash_envelope The path to a crash report envelope that will be
   //!     filled up and passed as an argument to the crash reporter.
+  //! \param[in] report_id A UUID string to use as the report identifier instead
+  //!     of generating a random one.
   //!
   //! \return `true` on success, `false` on failure with a message logged.
   bool StartHandler(const base::FilePath& handler,
@@ -144,7 +146,8 @@ class CrashpadClient {
                     const base::FilePath& screenshot = base::FilePath(),
                     bool wait_for_upload = false,
                     const base::FilePath& crash_reporter = base::FilePath(),
-                    const base::FilePath& crash_envelope = base::FilePath());
+                    const base::FilePath& crash_envelope = base::FilePath(),
+                    const std::string& report_id = std::string());
 
 #if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || \
     DOXYGEN

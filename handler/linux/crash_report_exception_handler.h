@@ -73,7 +73,8 @@ class CrashReportExceptionHandler : public ExceptionHandlerServer::Delegate {
       const UserStreamDataSources* user_stream_data_sources,
       bool wait_for_upload,
       const base::FilePath* crash_reporter,
-      const base::FilePath* crash_envelope);
+      const base::FilePath* crash_envelope,
+      const UUID* report_id);
 
   CrashReportExceptionHandler(const CrashReportExceptionHandler&) = delete;
   CrashReportExceptionHandler& operator=(const CrashReportExceptionHandler&) =
@@ -132,6 +133,7 @@ class CrashReportExceptionHandler : public ExceptionHandlerServer::Delegate {
   bool wait_for_upload_ = false;
   const base::FilePath* crash_reporter_;  // weak
   const base::FilePath* crash_envelope_;  // weak
+  const UUID* report_id_;  // weak
 };
 
 }  // namespace crashpad

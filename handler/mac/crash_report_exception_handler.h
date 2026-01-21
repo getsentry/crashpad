@@ -23,6 +23,7 @@
 #include "client/crash_report_database.h"
 #include "handler/crash_report_upload_thread.h"
 #include "handler/user_stream_data_source.h"
+#include "util/misc/uuid.h"
 #include "util/mach/exc_server_variants.h"
 
 namespace crashpad {
@@ -61,7 +62,8 @@ class CrashReportExceptionHandler final
       const std::vector<base::FilePath>* attachments,
       const UserStreamDataSources* user_stream_data_sources,
       const base::FilePath* crash_reporter,
-      const base::FilePath* crash_envelope);
+      const base::FilePath* crash_envelope,
+      const UUID* report_id);
 
   CrashReportExceptionHandler(const CrashReportExceptionHandler&) = delete;
   CrashReportExceptionHandler& operator=(const CrashReportExceptionHandler&) =
@@ -97,6 +99,7 @@ class CrashReportExceptionHandler final
   const UserStreamDataSources* user_stream_data_sources_;  // weak
   const base::FilePath* crash_reporter_;  // weak
   const base::FilePath* crash_envelope_;  // weak
+  const UUID* report_id_;  // weak
 };
 
 }  // namespace crashpad

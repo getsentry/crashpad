@@ -37,7 +37,8 @@ std::vector<std::string> BuildHandlerArgvStrings(
     const std::vector<std::string>& arguments,
     const std::vector<base::FilePath>& attachments,
     const base::FilePath& crash_reporter,
-    const base::FilePath& crash_envelope) {
+    const base::FilePath& crash_envelope,
+    const std::string& report_id) {
   std::vector<std::string> argv_strings(1, handler.value());
 
   for (const auto& argument : arguments) {
@@ -79,6 +80,10 @@ std::vector<std::string> BuildHandlerArgvStrings(
   if (!crash_envelope.empty()) {
     argv_strings.push_back(
         FormatArgumentString("crash-envelope", crash_envelope.value()));
+  }
+
+  if (!report_id.empty()) {
+    argv_strings.push_back(FormatArgumentString("report-id", report_id));
   }
 
   return argv_strings;

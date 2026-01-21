@@ -50,6 +50,7 @@
 #include "util/misc/address_types.h"
 #include "util/misc/metrics.h"
 #include "util/misc/paths.h"
+#include "util/misc/uuid.h"
 #include "util/numeric/in_range_cast.h"
 #include "util/stdlib/map_insert.h"
 #include "util/stdlib/string_number_conversion.h"
@@ -199,6 +200,8 @@ void Usage(const base::FilePath& me) {
       // clang-format off
 "      --url=URL               send crash reports to this Breakpad server URL,\n"
 "                              only if uploads are enabled for the database\n"
+"      --report-id=UUID        use UUID as the report identifier instead of\n"
+"                              generating a random one\n"
   // clang-format on
 #if BUILDFLAG(IS_CHROMEOS)
       // clang-format off
@@ -235,6 +238,7 @@ struct Options {
   base::FilePath database;
   base::FilePath metrics_dir;
   std::vector<std::string> monitor_self_arguments;
+  UUID report_id;
 #if BUILDFLAG(IS_APPLE)
   std::string mach_service;
   int handshake_fd;
@@ -656,6 +660,7 @@ int HandlerMain(int argc,
 #endif
     kOptionCrashReporter,
     kOptionCrashEnvelope,
+    kOptionReportID,
 
     // Standard options.
     kOptionHelp = -2,
@@ -755,6 +760,7 @@ int HandlerMain(int argc,
 #endif
     {"crash-reporter", required_argument, nullptr, kOptionCrashReporter},
     {"crash-envelope", required_argument, nullptr, kOptionCrashEnvelope},
+    {"report-id", required_argument, nullptr, kOptionReportID},
     {"help", no_argument, nullptr, kOptionHelp},
     {"version", no_argument, nullptr, kOptionVersion},
     {nullptr, 0, nullptr, 0},
@@ -962,6 +968,13 @@ int HandlerMain(int argc,
             ToolSupport::CommandLineArgumentToFilePathStringType(optarg));
         break;
       }
+      case kOptionReportID: {
+        if (!options.report_id.InitializeFromString(optarg)) {
+          ToolSupport::UsageHint(me, "failed to parse --report-id");
+          return ExitFailure();
+        }
+        break;
+      }
       case kOptionHelp: {
         Usage(me);
         MetricsRecordExit(Metrics::LifetimeMilestone::kExitedEarly);
@@ -1129,7 +1142,8 @@ int HandlerMain(int argc,
         &options.attachments,
         true,
         false,
-        user_stream_sources);
+        user_stream_sources,
+        &options.report_id);
   }
 #else
   exception_handler = std::make_unique<CrashReportExceptionHandler>(
@@ -1156,6 +1170,7 @@ int HandlerMain(int argc,
 #endif
       ,&options.crash_reporter
       ,&options.crash_envelope
+      ,&options.report_id
   );
 #endif  // BUILDFLAG(IS_CHROMEOS)
 

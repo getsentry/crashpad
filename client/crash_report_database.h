@@ -145,7 +145,8 @@ class CrashReportDatabase {
 
     bool Initialize(CrashReportDatabase* database,
                     const base::FilePath& directory,
-                    const base::FilePath::StringType& extension);
+                    const base::FilePath::StringType& extension,
+                    const UUID* uuid = nullptr);
 
     std::unique_ptr<FileWriter> writer_;
     std::unique_ptr<FileReader> reader_;
@@ -331,10 +332,12 @@ class CrashReportDatabase {
   //!
   //! \param[out] report A NewReport object containing a FileWriter with which
   //!     to write the report data. Only valid if this returns #kNoError.
+  //! \param[in] uuid Optional caller-provided UUID to use for this report. If
+  //!     null, the database generates one.
   //!
   //! \return The operation status code.
   virtual OperationStatus PrepareNewCrashReport(
-      std::unique_ptr<NewReport>* report) = 0;
+      std::unique_ptr<NewReport>* report, const UUID* uuid = nullptr) = 0;
 
   //! \brief Informs the database that a crash report has been successfully
   //!     written.

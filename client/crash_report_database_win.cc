@@ -635,7 +635,7 @@ class CrashReportDatabaseWin : public CrashReportDatabase {
   // CrashReportDatabase:
   Settings* GetSettings() override;
   OperationStatus PrepareNewCrashReport(
-      std::unique_ptr<NewReport>* report) override;
+      std::unique_ptr<NewReport>* report, const UUID* uuid) override;
   OperationStatus FinishedWritingCrashReport(std::unique_ptr<NewReport> report,
                                              UUID* uuid) override;
   OperationStatus LookUpCrashReport(const UUID& uuid, Report* report) override;
@@ -749,13 +749,14 @@ Settings* CrashReportDatabaseWin::GetSettings() {
 }
 
 OperationStatus CrashReportDatabaseWin::PrepareNewCrashReport(
-    std::unique_ptr<NewReport>* report) {
+    std::unique_ptr<NewReport>* report, const UUID* uuid) {
   INITIALIZATION_STATE_DCHECK_VALID(initialized_);
 
   std::unique_ptr<NewReport> new_report(new NewReport());
   if (!new_report->Initialize(this,
                               base_dir_.Append(kReportsDirectory),
-                              std::wstring(L".") + kCrashReportFileExtension)) {
+                              std::wstring(L".") + kCrashReportFileExtension,
+                              uuid)) {
     return kFileSystemError;
   }
 

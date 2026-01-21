@@ -199,10 +199,13 @@ CrashReportDatabase::NewReport::~NewReport() = default;
 bool CrashReportDatabase::NewReport::Initialize(
     CrashReportDatabase* database,
     const base::FilePath& directory,
-    const base::FilePath::StringType& extension) {
+    const base::FilePath::StringType& extension,
+    const UUID* uuid) {
   database_ = database;
 
-  if (!uuid_.InitializeWithNew()) {
+  if (uuid && !uuid->IsZero()) {
+    uuid_ = *uuid;
+  } else if (!uuid_.InitializeWithNew()) {
     return false;
   }
 

@@ -81,6 +81,11 @@ struct UUID {
   void InitializeFromSystemUUID(const ::UUID* system_uuid);
 #endif  // BUILDFLAG(IS_WIN)
 
+  //! \brief Checks whether the %UUID is zero (all bytes are 0).
+  //!
+  //! \return `true` if the %UUID is all zeros, `false` otherwise.
+  bool IsZero() const;
+
   //! \brief Formats the %UUID per RFC 4122 §3.
   //!
   //! \return A string of the form `"00112233-4455-6677-8899-aabbccddeeff"`.

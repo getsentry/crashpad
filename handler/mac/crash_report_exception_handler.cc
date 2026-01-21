@@ -51,14 +51,16 @@ CrashReportExceptionHandler::CrashReportExceptionHandler(
     const std::vector<base::FilePath>* attachments,
     const UserStreamDataSources* user_stream_data_sources,
     const base::FilePath* crash_reporter,
-    const base::FilePath* crash_envelope)
+    const base::FilePath* crash_envelope,
+    const UUID* report_id)
     : database_(database),
       upload_thread_(upload_thread),
       process_annotations_(process_annotations),
       attachments_(attachments),
       user_stream_data_sources_(user_stream_data_sources),
       crash_reporter_(crash_reporter),
-      crash_envelope_(crash_envelope) {}
+      crash_envelope_(crash_envelope),
+      report_id_(report_id) {}
 
 CrashReportExceptionHandler::~CrashReportExceptionHandler() {
 }
@@ -162,7 +164,7 @@ kern_return_t CrashReportExceptionHandler::CatchMachException(
 
     std::unique_ptr<CrashReportDatabase::NewReport> new_report;
     CrashReportDatabase::OperationStatus database_status =
-        database_->PrepareNewCrashReport(&new_report);
+        database_->PrepareNewCrashReport(&new_report, report_id_);
     if (database_status != CrashReportDatabase::kNoError) {
       Metrics::ExceptionCaptureResult(
           Metrics::CaptureResult::kPrepareNewCrashReportFailed);

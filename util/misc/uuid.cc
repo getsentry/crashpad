@@ -57,6 +57,12 @@ void UUID::InitializeToZero() {
   memset(this, 0, sizeof(*this));
 }
 
+bool UUID::IsZero() const {
+  UUID zero;
+  zero.InitializeToZero();
+  return *this == zero;
+}
+
 void UUID::InitializeFromBytes(const uint8_t* bytes_ptr) {
   // TODO(crbug.com/40284755): This span construction is unsound. The caller
   // should provide a span instead of an unbounded pointer.
