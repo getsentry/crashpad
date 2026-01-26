@@ -396,6 +396,11 @@ if(WIN32)
             misc/capture_context_win.asm
             win/safe_terminate_process.asm
         )
+        set_source_files_properties(
+                misc/capture_context_win.asm
+                win/safe_terminate_process.asm
+                PROPERTIES LANGUAGE ASM_MASM
+        )
     endif()
 endif()
 
