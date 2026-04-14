@@ -126,6 +126,7 @@ struct SettingsReader::Data {
 
   enum Options : uint32_t {
     kUploadsEnabled = 1 << 0,
+    kUploadsPaused = 1 << 1,
   };
 
   Data() : magic(kSettingsMagic),
@@ -171,6 +172,17 @@ bool SettingsReader::GetUploadsEnabled(bool* enabled) {
     return false;
 
   *enabled = (settings.options & Data::Options::kUploadsEnabled) != 0;
+  return true;
+}
+
+bool SettingsReader::GetUploadsPaused(bool* paused) {
+  DCHECK(initialized().is_valid());
+
+  Data settings;
+  if (!OpenAndReadSettings(&settings))
+    return false;
+
+  *paused = (settings.options & Data::Options::kUploadsPaused) != 0;
   return true;
 }
 
@@ -264,6 +276,22 @@ bool Settings::SetUploadsEnabled(bool enabled) {
     settings.options |= Data::Options::kUploadsEnabled;
   else
     settings.options &= ~Data::Options::kUploadsEnabled;
+
+  return WriteSettings(handle.get(), settings);
+}
+
+bool Settings::SetUploadsPaused(bool paused) {
+  DCHECK(initialized().is_valid());
+
+  Data settings;
+  ScopedLockedFileHandle handle = OpenForWritingAndReadSettings(&settings);
+  if (!handle.is_valid())
+    return false;
+
+  if (paused)
+    settings.options |= Data::Options::kUploadsPaused;
+  else
+    settings.options &= ~Data::Options::kUploadsPaused;
 
   return WriteSettings(handle.get(), settings);
 }

@@ -140,6 +140,14 @@ void CrashReportUploadThread::ProcessPendingReports() {
   // uploads complete (regardless of whether or not that succeeded).
   ScopedFunctionInvoker scoped_function_invoker(callback_);
 
+  bool uploads_paused;
+  if (database_->GetSettings()->GetUploadsPaused(&uploads_paused) &&
+      uploads_paused) {
+    // Leave known pending report UUIDs in the queue so they are retried once
+    // the pause is lifted, and skip scanning for new pending reports.
+    return;
+  }
+
   std::vector<UUID> known_report_uuids = known_pending_report_uuids_.Drain();
   for (const UUID& report_uuid : known_report_uuids) {
     CrashReportDatabase::Report report;

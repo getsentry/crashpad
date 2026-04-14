@@ -100,6 +100,20 @@ class SettingsReader {
   //!     error logged.
   bool GetUploadsEnabled(bool* enabled);
 
+  //! \brief Retrieves whether uploads are paused.
+  //!
+  //! When paused, pending reports are retained in the `pending` state rather
+  //! than being uploaded or skipped. Reports accumulate in `pending` until the
+  //! flag is cleared, at which point normal processing resumes.
+  //!
+  //! The default value is `false`.
+  //!
+  //! \param[out] paused Whether uploads are paused.
+  //!
+  //! \return On success, returns `true`, otherwise returns `false` with an
+  //!     error logged.
+  bool GetUploadsPaused(bool* paused);
+
   //! \brief Retrieves the last time at which a report was attempted to be
   //!     uploaded.
   //!
@@ -171,6 +185,16 @@ class Settings final : public SettingsReader {
   //! \return On success, returns `true`, otherwise returns `false` with an
   //!     error logged.
   bool SetUploadsEnabled(bool enabled);
+
+  //! \brief Sets whether uploads are paused.
+  //!
+  //! See GetUploadsPaused() for the semantics of this flag.
+  //!
+  //! \param[in] paused Whether uploads should be paused.
+  //!
+  //! \return On success, returns `true`, otherwise returns `false` with an
+  //!     error logged.
+  bool SetUploadsPaused(bool paused);
 
   //! \brief Sets the last time at which a report was attempted to be uploaded.
   //!
