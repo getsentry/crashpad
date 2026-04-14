@@ -217,4 +217,10 @@ void CrashReportExceptionHandler::ExceptionHandlerServerAttachmentRemoved(
   attachments_.erase(it);
 }
 
+void CrashReportExceptionHandler::ExceptionHandlerServerRetryRequested() {
+  if (upload_thread_) {
+    upload_thread_->RetryPending();
+  }
+}
+
 }  // namespace crashpad

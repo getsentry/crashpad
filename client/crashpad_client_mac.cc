@@ -31,6 +31,7 @@
 #include "util/mac/mac_util.h"
 #include "util/mach/bootstrap.h"
 #include "util/mach/child_port_handshake.h"
+#include "util/mach/exception_handler_protocol.h"
 #include "util/mach/exception_ports.h"
 #include "util/mach/mach_extensions.h"
 #include "util/mach/mach_message.h"
@@ -610,6 +611,11 @@ base::apple::ScopedMachSendRight CrashpadClient::GetHandlerMachPort() const {
   }
 
   return base::apple::ScopedMachSendRight(exception_port_.get());
+}
+
+void CrashpadClient::RequestRetry() {
+  SendClientToServerMessage(exception_port_.get(),
+                            ClientToServerMessage::kRequestRetry);
 }
 
 // static

@@ -163,6 +163,10 @@ struct ClientToServerMessage {
 
     //! \brief For AttachmentRequestV2 (variable-length paths).
     kRemoveAttachmentV2,
+
+    //! \brief Requests that the server retry pending report uploads. No
+    //!     additional payload.
+    kRequestRetry,
   } type;
 
   union {

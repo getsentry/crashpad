@@ -155,6 +155,8 @@ if(APPLE)
         mach/exc_server_variants.h
         mach/exception_behaviors.cc
         mach/exception_behaviors.h
+        mach/exception_handler_protocol.cc
+        mach/exception_handler_protocol.h
         mach/exception_ports.cc
         mach/exception_ports.h
         mach/mach_extensions.cc

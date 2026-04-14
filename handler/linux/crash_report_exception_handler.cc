@@ -236,6 +236,12 @@ void CrashReportExceptionHandler::RemoveAttachment(
   attachments_.erase(it);
 }
 
+void CrashReportExceptionHandler::RequestRetry() {
+  if (upload_thread_) {
+    upload_thread_->RetryPending();
+  }
+}
+
 bool CrashReportExceptionHandler::WriteMinidumpToDatabase(
     ProcessSnapshotLinux* process_snapshot,
     ProcessSnapshotSanitized* sanitized_snapshot,

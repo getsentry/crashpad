@@ -554,6 +554,14 @@ bool ExceptionHandlerServer::ServiceClientConnection(
       return false;
     }
 
+    case ClientToServerMessage::kRequestRetry: {
+      ServerToClientMessage response = {};
+      service_context.delegate()->ExceptionHandlerServerRetryRequested();
+      LoggingWriteFile(
+          service_context.pipe(), &response, sizeof(response));
+      return false;
+    }
+
     default:
       LOG(ERROR) << "unhandled message type: " << message.type;
       return false;

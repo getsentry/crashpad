@@ -1231,4 +1231,11 @@ void CrashpadClient::RemoveAttachment(const base::FilePath& attachment) {
                                      &response);
 }
 
+void CrashpadClient::RequestRetry() {
+  ClientToServerMessage message = {};
+  message.type = ClientToServerMessage::kRequestRetry;
+  ServerToClientMessage response = {};
+  SendToCrashHandlerServer(ipc_pipe_, message, &response);
+}
+
 }  // namespace crashpad

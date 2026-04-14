@@ -445,6 +445,11 @@ class RequestCrashDumpHandler : public SignalHandler {
     client.RemoveAttachment(attachment);
   }
 
+  void RequestRetry() {
+    ExceptionHandlerClient client(sock_to_handler_.get(), true);
+    client.RequestRetry();
+  }
+
  private:
   RequestCrashDumpHandler() = default;
 
@@ -830,6 +835,11 @@ void CrashpadClient::AddAttachment(const base::FilePath& attachment) {
 void CrashpadClient::RemoveAttachment(const base::FilePath& attachment) {
   auto signal_handler = RequestCrashDumpHandler::Get();
   signal_handler->RemoveAttachment(attachment);
+}
+
+void CrashpadClient::RequestRetry() {
+  auto signal_handler = RequestCrashDumpHandler::Get();
+  signal_handler->RequestRetry();
 }
 
 }  // namespace crashpad

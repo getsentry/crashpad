@@ -308,4 +308,10 @@ kern_return_t CrashReportExceptionHandler::CatchMachException(
   return KERN_SUCCESS;
 }
 
+void CrashReportExceptionHandler::RequestRetry() {
+  if (upload_thread_) {
+    upload_thread_->RetryPending();
+  }
+}
+
 }  // namespace crashpad

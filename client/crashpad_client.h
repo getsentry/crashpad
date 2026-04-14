@@ -872,6 +872,14 @@ class CrashpadClient {
   void RemoveAttachment(const base::FilePath& attachment);
 #endif
 
+  //! \brief Requests that the handler retry pending report uploads.
+  //!
+  //! Wakes the handler's upload thread to immediately process pending reports
+  //! rather than waiting for its next periodic scan. Useful after state
+  //! changes (such as clearing UploadsPaused) that should take effect without
+  //! delay.
+  void RequestRetry();
+
  private:
 #if BUILDFLAG(IS_WIN) || DOXYGEN
   //!  \brief Registers process handlers for the client.
