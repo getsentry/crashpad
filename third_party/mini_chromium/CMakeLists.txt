@@ -23,6 +23,7 @@ mc_append_sources(
     debug/alias.h
     files/file_path.cc
     files/file_path.h
+    files/file_util.cc
     files/file_util.h
     files/scoped_file.cc
     files/scoped_file.h

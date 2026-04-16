@@ -223,6 +223,7 @@ void Usage(const base::FilePath& me) {
   // clang-format on
 #endif  // BUILDFLAG(IS_ANDROID)
       // clang-format off
+"      --log-file=FILE         write handler log output to FILE\n"
 "      --help                  display this help and exit\n"
 "      --version               output version information and exit\n",
           me.value().c_str());
@@ -571,17 +572,22 @@ class ScopedStoppable {
   std::unique_ptr<Stoppable> stoppable_;
 };
 
-void InitCrashpadLogging() {
+void InitCrashpadLogging(const base::FilePath& log_file_path) {
   logging::LoggingSettings settings;
 #if BUILDFLAG(IS_CHROMEOS)
   settings.logging_dest = logging::LOG_TO_FILE;
-  settings.log_file_path = "/var/log/chrome/chrome";
+  settings.log_file_path =
+      base::FilePath(FILE_PATH_LITERAL("/var/log/chrome/chrome"));
 #elif BUILDFLAG(IS_WIN)
   settings.logging_dest = logging::LOG_TO_SYSTEM_DEBUG_LOG;
 #else
   settings.logging_dest =
       logging::LOG_TO_SYSTEM_DEBUG_LOG | logging::LOG_TO_STDERR;
 #endif
+  if (!log_file_path.empty()) {
+    settings.logging_dest |= logging::LOG_TO_FILE;
+    settings.log_file_path = log_file_path;
+  }
   logging::InitLogging(settings);
 }
 
@@ -590,7 +596,21 @@ void InitCrashpadLogging() {
 int HandlerMain(int argc,
                 char* argv[],
                 const UserStreamDataSources* user_stream_sources) {
-  InitCrashpadLogging();
+  // Pre-scan argv for --log-file= so that log output from HandlerMain
+  // (including option-parsing errors) is captured to the file.
+  base::FilePath log_file_path;
+  for (int i = 1; i < argc; ++i) {
+    static constexpr char kLogFilePrefix[] = "--log-file=";
+    if (argv[i] &&
+        strncmp(argv[i], kLogFilePrefix, sizeof(kLogFilePrefix) - 1) == 0) {
+      log_file_path = base::FilePath(
+          ToolSupport::CommandLineArgumentToFilePathStringType(
+              argv[i] + sizeof(kLogFilePrefix) - 1));
+      break;
+    }
+  }
+
+  InitCrashpadLogging(log_file_path);
 
   InstallCrashHandler();
   CallMetricsRecordNormalExit metrics_record_normal_exit;
@@ -661,6 +681,7 @@ int HandlerMain(int argc,
     kOptionCrashReporter,
     kOptionCrashEnvelope,
     kOptionReportID,
+    kOptionLogFile,
 
     // Standard options.
     kOptionHelp = -2,
@@ -761,6 +782,7 @@ int HandlerMain(int argc,
     {"crash-reporter", required_argument, nullptr, kOptionCrashReporter},
     {"crash-envelope", required_argument, nullptr, kOptionCrashEnvelope},
     {"report-id", required_argument, nullptr, kOptionReportID},
+    {"log-file", required_argument, nullptr, kOptionLogFile},
     {"help", no_argument, nullptr, kOptionHelp},
     {"version", no_argument, nullptr, kOptionVersion},
     {nullptr, 0, nullptr, 0},
@@ -973,6 +995,10 @@ int HandlerMain(int argc,
           ToolSupport::UsageHint(me, "failed to parse --report-id");
           return ExitFailure();
         }
+        break;
+      }
+      case kOptionLogFile: {
+        // Handled by the pre-scan in HandlerMain before InitCrashpadLogging.
         break;
       }
       case kOptionHelp: {
