@@ -224,6 +224,8 @@ void Usage(const base::FilePath& me) {
 #endif  // BUILDFLAG(IS_ANDROID)
       // clang-format off
 "      --log-file=FILE         write handler log output to FILE\n"
+"      --log-level=N           minimum log severity (-1=verbose, 0=info,\n"
+"                              1=warning, 2=error, 4=fatal)\n"
 "      --help                  display this help and exit\n"
 "      --version               output version information and exit\n",
           me.value().c_str());
@@ -572,7 +574,8 @@ class ScopedStoppable {
   std::unique_ptr<Stoppable> stoppable_;
 };
 
-void InitCrashpadLogging(const base::FilePath& log_file_path) {
+void InitCrashpadLogging(const base::FilePath& log_file_path,
+                         int min_log_level) {
   logging::LoggingSettings settings;
 #if BUILDFLAG(IS_CHROMEOS)
   settings.logging_dest = logging::LOG_TO_FILE;
@@ -588,6 +591,7 @@ void InitCrashpadLogging(const base::FilePath& log_file_path) {
     settings.logging_dest |= logging::LOG_TO_FILE;
     settings.log_file_path = log_file_path;
   }
+  settings.min_log_level = min_log_level;
   logging::InitLogging(settings);
 }
 
@@ -596,21 +600,31 @@ void InitCrashpadLogging(const base::FilePath& log_file_path) {
 int HandlerMain(int argc,
                 char* argv[],
                 const UserStreamDataSources* user_stream_sources) {
-  // Pre-scan argv for --log-file= so that log output from HandlerMain
-  // (including option-parsing errors) is captured to the file.
+  // Pre-scan argv for --log-file= and --log-level= so that log output from
+  // HandlerMain (including option-parsing errors) is captured to the file
+  // and filtered to the requested severity.
   base::FilePath log_file_path;
+  int min_log_level = logging::LOG_INFO;
   for (int i = 1; i < argc; ++i) {
+    if (!argv[i]) {
+      continue;
+    }
     static constexpr char kLogFilePrefix[] = "--log-file=";
-    if (argv[i] &&
-        strncmp(argv[i], kLogFilePrefix, sizeof(kLogFilePrefix) - 1) == 0) {
+    static constexpr char kLogLevelPrefix[] = "--log-level=";
+    if (strncmp(argv[i], kLogFilePrefix, sizeof(kLogFilePrefix) - 1) == 0) {
       log_file_path = base::FilePath(
           ToolSupport::CommandLineArgumentToFilePathStringType(
               argv[i] + sizeof(kLogFilePrefix) - 1));
-      break;
+    } else if (strncmp(argv[i], kLogLevelPrefix,
+                       sizeof(kLogLevelPrefix) - 1) == 0) {
+      int parsed;
+      if (StringToNumber(argv[i] + sizeof(kLogLevelPrefix) - 1, &parsed)) {
+        min_log_level = parsed;
+      }
     }
   }
 
-  InitCrashpadLogging(log_file_path);
+  InitCrashpadLogging(log_file_path, min_log_level);
 
   InstallCrashHandler();
   CallMetricsRecordNormalExit metrics_record_normal_exit;
@@ -682,6 +696,7 @@ int HandlerMain(int argc,
     kOptionCrashEnvelope,
     kOptionReportID,
     kOptionLogFile,
+    kOptionLogLevel,
 
     // Standard options.
     kOptionHelp = -2,
@@ -783,6 +798,7 @@ int HandlerMain(int argc,
     {"crash-envelope", required_argument, nullptr, kOptionCrashEnvelope},
     {"report-id", required_argument, nullptr, kOptionReportID},
     {"log-file", required_argument, nullptr, kOptionLogFile},
+    {"log-level", required_argument, nullptr, kOptionLogLevel},
     {"help", no_argument, nullptr, kOptionHelp},
     {"version", no_argument, nullptr, kOptionVersion},
     {nullptr, 0, nullptr, 0},
@@ -997,7 +1013,8 @@ int HandlerMain(int argc,
         }
         break;
       }
-      case kOptionLogFile: {
+      case kOptionLogFile:
+      case kOptionLogLevel: {
         // Handled by the pre-scan in HandlerMain before InitCrashpadLogging.
         break;
       }
