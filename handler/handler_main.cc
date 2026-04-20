@@ -606,19 +606,24 @@ int HandlerMain(int argc,
   base::FilePath log_file_path;
   int min_log_level = logging::LOG_INFO;
   for (int i = 1; i < argc; ++i) {
-    if (!argv[i]) {
-      continue;
-    }
-    static constexpr char kLogFilePrefix[] = "--log-file=";
-    static constexpr char kLogLevelPrefix[] = "--log-level=";
-    if (strncmp(argv[i], kLogFilePrefix, sizeof(kLogFilePrefix) - 1) == 0) {
+    auto get_value = [&](const char* flag) -> const char* {
+      const size_t len = strlen(flag);
+      if (strncmp(argv[i], flag, len) == 0) {
+        if (argv[i][len] == '=') {
+          return argv[i] + len + 1;
+        }
+        if (argv[i][len] == '\0' && i + 1 < argc) {
+          return argv[++i];
+        }
+      }
+      return nullptr;
+    };
+    if (const char* file = get_value("--log-file")) {
       log_file_path = base::FilePath(
-          ToolSupport::CommandLineArgumentToFilePathStringType(
-              argv[i] + sizeof(kLogFilePrefix) - 1));
-    } else if (strncmp(argv[i], kLogLevelPrefix,
-                       sizeof(kLogLevelPrefix) - 1) == 0) {
-      int parsed;
-      if (StringToNumber(argv[i] + sizeof(kLogLevelPrefix) - 1, &parsed)) {
+          ToolSupport::CommandLineArgumentToFilePathStringType(file));
+    } else if (const char* level = get_value("--log-level")) {
+      int parsed = 0;
+      if (StringToNumber(level, &parsed)) {
         min_log_level = parsed;
       }
     }
