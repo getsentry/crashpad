@@ -355,6 +355,7 @@ enum MinidumpContextARMFlags : uint32_t {
 };
 
 //! \brief A 32-bit ARM CPU context (register state) carried in a minidump file.
+//! \see https://github.com/rust-minidump/rust-minidump/blob/d4fefc765aad35b3bef569d53c1680eadab5a268/minidump-common/src/format.rs#L1034-L1055
 struct MinidumpContextARM {
   //! \brief A bitfield composed of values of #MinidumpContextFlags and
   //!     #MinidumpContextARMFlags.
@@ -375,7 +376,7 @@ struct MinidumpContextARM {
   uint32_t cpsr;
 
   //! \brief Floating-point status and control register.
-  uint32_t fpscr;
+  uint64_t fpscr;
 
   //! \brief VFP registers `d0`-`d31`.
   uint64_t vfp[32];
