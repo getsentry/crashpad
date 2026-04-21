@@ -158,7 +158,7 @@ bool MinidumpContextConverter::Initialize(
     context_.arm->lr = src->lr;
     context_.arm->pc = src->pc;
     context_.arm->cpsr = src->cpsr;
-    context_.arm->vfp_regs.fpscr = src->fpscr;
+    context_.arm->vfp_regs.fpscr = static_cast<uint32_t>(src->fpscr);
 
     for (size_t i = 0; i < std::size(src->vfp); i++) {
       context_.arm->vfp_regs.vfp[i] = src->vfp[i];
