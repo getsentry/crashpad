@@ -113,6 +113,7 @@ jobs:
             gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf \
             zlib1g-dev:armhf libssl-dev:armhf libcurl4-openssl-dev:armhf \
             libunwind-dev:armhf pkg-config
+          echo "PKG_CONFIG_LIBDIR=/usr/lib/arm-linux-gnueabihf/pkgconfig" >> "$GITHUB_ENV"
 
       - name: Installing LLVM-MINGW Dependencies
         if: ${{ runner.os == 'Windows' && matrix.MINGW == '1' }}
