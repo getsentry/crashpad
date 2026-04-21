@@ -36,6 +36,12 @@ jobs:
             platform: ubuntu-22.04
             CC: clang
             CXX: clang++
+          - name: Linux Arm32 (gcc-arm-linux-gnueabihf)
+            platform: ubuntu-24.04-arm
+            CC: arm-linux-gnueabihf-gcc
+            CXX: arm-linux-gnueabihf-g++
+            LINUX_ARM32: 1
+            CMAKE_DEFINES: -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR=arm -DCMAKE_ASM_COMPILER=arm-linux-gnueabihf-gcc
           - name: Alpine Linux (GCC + musl)
             platform: ubuntu-latest
             container: alpine:3.21
@@ -84,10 +90,21 @@ jobs:
           submodules: "recursive"
 
       - name: Installing Ubuntu Dependencies
-        if: ${{ runner.os == 'Linux' && !matrix.container }}
+        if: ${{ runner.os == 'Linux' && !matrix.container && !matrix.LINUX_ARM32 }}
         run: |
           sudo apt update
           sudo apt install clang zlib1g-dev libcurl4-openssl-dev libssl-dev libunwind-dev pkg-config
+
+      - name: Installing Linux arm32 Dependencies
+        if: ${{ runner.os == 'Linux' && matrix.LINUX_ARM32 && !matrix.container }}
+        run: |
+          sudo dpkg --add-architecture armhf
+          sudo apt update
+          sudo apt install -y \
+            cmake \
+            gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf \
+            zlib1g-dev:armhf libssl-dev:armhf libcurl4-openssl-dev:armhf \
+            libunwind-dev:armhf pkg-config
 
       - name: Installing LLVM-MINGW Dependencies
         if: ${{ runner.os == 'Windows' && matrix.MINGW == '1' }}
