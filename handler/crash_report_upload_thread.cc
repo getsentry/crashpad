@@ -611,6 +611,8 @@ CrashReportUploadThread::UploadResult CrashReportUploadThread::UploadReport(
           it = attachments.erase(it);
           continue;
         }
+
+        return UploadResult::kRetry;
       }
     }
 
@@ -637,6 +639,8 @@ CrashReportUploadThread::UploadResult CrashReportUploadThread::UploadReport(
                                 &large_attachment_upload_available,
                                 &minidump_location)) {
         minidump_uploaded_separately = true;
+      } else {
+        return UploadResult::kRetry;
       }
     }
   }
