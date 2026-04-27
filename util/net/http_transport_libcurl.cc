@@ -600,7 +600,8 @@ size_t HTTPTransportLibcurl::WriteResponseHeader(char* buffer,
                                                  void* userdata) {
   HTTPTransportLibcurl* self =
       reinterpret_cast<HTTPTransportLibcurl*>(userdata);
-  const size_t len = size * nitems;
+  base::CheckedNumeric<size_t> checked_len = base::CheckMul(size, nitems);
+  size_t len = checked_len.ValueOrDefault(std::numeric_limits<size_t>::max());
   std::string line(buffer, len);
   while (!line.empty() && (line.back() == '\r' || line.back() == '\n')) {
     line.pop_back();
