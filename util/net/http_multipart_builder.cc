@@ -34,6 +34,9 @@ constexpr char kCRLF[] = "\r\n";
 
 constexpr char kBoundaryCRLF[] = "\r\n\r\n";
 
+constexpr char kAttachmentRefMime[] =
+    "application/vnd.sentry.attachment-ref+json";
+
 // Generates a random string suitable for use as a multipart boundary.
 std::string GenerateBoundaryString() {
   // RFC 2046 §5.1.1 says that the boundary string may be 1 to 70 characters
@@ -175,8 +178,15 @@ std::unique_ptr<HTTPBodyStream> HTTPMultipartBuilder::GetBodyStream() {
     header += base::StringPrintf("Content-Type: %s%s",
         attachment.content_type.c_str(), kBoundaryCRLF);
 #else
-     header += base::StringPrintf("; filename=\"%s\"%s",
-        attachment.filename.c_str(), kBoundaryCRLF);
+    if (attachment.content_type == kAttachmentRefMime) {
+      header += base::StringPrintf("; filename=\"%s\"%s",
+          attachment.filename.c_str(), kCRLF);
+      header += base::StringPrintf("Content-Type: %s%s",
+          attachment.content_type.c_str(), kBoundaryCRLF);
+    } else {
+      header += base::StringPrintf("; filename=\"%s\"%s",
+          attachment.filename.c_str(), kBoundaryCRLF);
+    }
 #endif
 
     streams.push_back(new StringHTTPBodyStream(header));

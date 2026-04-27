@@ -338,6 +338,10 @@ class HTTPTransportLibcurl final : public HTTPTransport {
                                   size_t size,
                                   size_t nitems,
                                   void* userdata);
+  static size_t WriteResponseHeader(char* buffer,
+                                    size_t size,
+                                    size_t nitems,
+                                    void* userdata);
 };
 
 HTTPTransportLibcurl::HTTPTransportLibcurl() : HTTPTransport() {}
@@ -347,7 +351,10 @@ HTTPTransportLibcurl::~HTTPTransportLibcurl() {}
 bool HTTPTransportLibcurl::ExecuteSynchronously(std::string* response_body) {
   DCHECK(body_stream());
 
-  response_body->clear();
+  ResetResponse();
+  if (response_body) {
+    response_body->clear();
+  }
 
   // curl_easy_init() will do this on the first call if it hasn’t been done yet,
   // but not in a thread-safe way as is done here.
@@ -448,8 +455,21 @@ bool HTTPTransportLibcurl::ExecuteSynchronously(std::string* response_body) {
           curl.get(), CURLOPT_POSTFIELDSIZE_LARGE, content_length_curl);
     }
   } else if (method() != "GET") {
-    // Untested.
     TRY_CURL_EASY_SETOPT(curl.get(), CURLOPT_CUSTOMREQUEST, method().c_str());
+    TRY_CURL_EASY_SETOPT(curl.get(), CURLOPT_UPLOAD, 1l);
+
+    if (chunked) {
+      TRY_CURL_SLIST_APPEND(curl_headers, "Transfer-Encoding: chunked");
+    } else {
+      curl_off_t content_length_curl;
+      if (!AssignIfInRange(&content_length_curl, content_length)) {
+        LOG(ERROR) << base::StringPrintf("Content-Length %zu too large",
+                                         content_length);
+        return false;
+      }
+      TRY_CURL_EASY_SETOPT(
+          curl.get(), CURLOPT_INFILESIZE_LARGE, content_length_curl);
+    }
   }
 
   TRY_CURL_EASY_SETOPT(curl.get(), CURLOPT_HTTPHEADER, curl_headers.get());
@@ -458,6 +478,8 @@ bool HTTPTransportLibcurl::ExecuteSynchronously(std::string* response_body) {
   TRY_CURL_EASY_SETOPT(curl.get(), CURLOPT_READDATA, this);
   TRY_CURL_EASY_SETOPT(curl.get(), CURLOPT_WRITEFUNCTION, WriteResponseBody);
   TRY_CURL_EASY_SETOPT(curl.get(), CURLOPT_WRITEDATA, response_body);
+  TRY_CURL_EASY_SETOPT(curl.get(), CURLOPT_HEADERFUNCTION, WriteResponseHeader);
+  TRY_CURL_EASY_SETOPT(curl.get(), CURLOPT_HEADERDATA, this);
   if (!http_proxy().empty()) {
     // An empty string is a special value that libcurl interprets as “no proxy”.
     const char* proxy = http_proxy() == "<empty>" ? "" : http_proxy().c_str();
@@ -486,9 +508,11 @@ bool HTTPTransportLibcurl::ExecuteSynchronously(std::string* response_body) {
     return false;
   }
 
-  if (status != 200) {
+  SetResponseCode(static_cast<int>(status));
+  if (!IsExpectedResponseCode(static_cast<int>(status))) {
+    const char* body = response_body ? response_body->c_str() : "";
     LOG(ERROR) << base::StringPrintf(
-        "HTTP status %ld, response = \"%s\"", status, response_body->c_str());
+        "HTTP status %ld, response = \"%s\"", status, body);
     return false;
   }
 
@@ -541,7 +565,34 @@ size_t HTTPTransportLibcurl::WriteResponseBody(char* buffer,
   base::CheckedNumeric<size_t> checked_len = base::CheckMul(size, nitems);
   size_t len = checked_len.ValueOrDefault(std::numeric_limits<size_t>::max());
 
+  if (!response_body) {
+    return len;
+  }
+
   response_body->append(buffer, len);
+  return len;
+}
+
+// static
+size_t HTTPTransportLibcurl::WriteResponseHeader(char* buffer,
+                                                 size_t size,
+                                                 size_t nitems,
+                                                 void* userdata) {
+  HTTPTransportLibcurl* self =
+      reinterpret_cast<HTTPTransportLibcurl*>(userdata);
+  const size_t len = size * nitems;
+  std::string line(buffer, len);
+  while (!line.empty() && (line.back() == '\r' || line.back() == '\n')) {
+    line.pop_back();
+  }
+
+  const size_t separator = line.find(':');
+  if (separator != std::string::npos) {
+    std::string value = line.substr(separator + 1);
+    const size_t first = value.find_first_not_of(" \t");
+    value = first == std::string::npos ? std::string() : value.substr(first);
+    self->SetResponseHeader(line.substr(0, separator), value);
+  }
   return len;
 }
 

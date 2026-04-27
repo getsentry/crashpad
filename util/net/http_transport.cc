@@ -24,8 +24,11 @@ HTTPTransport::HTTPTransport()
     : url_(),
       method_("POST"),
       headers_(),
+      response_headers_(),
       body_stream_(),
-      timeout_(15.0) {
+      timeout_(15.0),
+      expected_response_code_(0),
+      response_code_(0) {
 }
 
 HTTPTransport::~HTTPTransport() {
@@ -48,6 +51,10 @@ void HTTPTransport::SetHeader(const std::string& header,
   headers_[header] = value;
 }
 
+void HTTPTransport::SetExpectedResponseCode(int status_code) {
+  expected_response_code_ = status_code;
+}
+
 void HTTPTransport::SetBodyStream(std::unique_ptr<HTTPBodyStream> stream) {
   body_stream_ = std::move(stream);
 }
@@ -58,6 +65,27 @@ void HTTPTransport::SetTimeout(double timeout) {
 
 void HTTPTransport::SetRootCACertificatePath(const base::FilePath& cert) {
   root_ca_certificate_path_ = cert;
+}
+
+void HTTPTransport::ResetResponse() {
+  response_code_ = 0;
+  response_headers_.clear();
+}
+
+void HTTPTransport::SetResponseCode(int response_code) {
+  response_code_ = response_code;
+}
+
+void HTTPTransport::SetResponseHeader(const std::string& header,
+                                      const std::string& value) {
+  response_headers_[header] = value;
+}
+
+bool HTTPTransport::IsExpectedResponseCode(int response_code) const {
+  if (expected_response_code_ != 0) {
+    return response_code == expected_response_code_;
+  }
+  return response_code >= 200 && response_code <= 203;
 }
 
 }  // namespace crashpad

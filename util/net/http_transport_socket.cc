@@ -32,6 +32,7 @@
 #include "util/net/http_body.h"
 #include "util/net/http_transport.h"
 #include "util/net/url.h"
+#include "util/numeric/safe_assignment.h"
 #include "util/stdlib/string_number_conversion.h"
 #include "util/string/split_string.h"
 
@@ -463,7 +464,7 @@ bool StartsWith(const std::string& str, const char* with, size_t len) {
   return str.compare(0, len, with) == 0;
 }
 
-bool ReadResponseLine(Stream* stream) {
+bool ReadResponseLine(Stream* stream, int* http_status) {
   std::string response_line;
   if (!ReadLine(stream, &response_line)) {
     LOG(ERROR) << "ReadLine";
@@ -477,10 +478,10 @@ bool ReadResponseLine(Stream* stream) {
       response_line.at(strlen(kHttp10) + 3) != ' ') {
     return false;
   }
-  unsigned int http_status = 0;
+  unsigned int status = 0;
   return base::StringToUint(response_line.substr(strlen(kHttp10), 3),
-                            &http_status) &&
-         http_status >= 200 && http_status <= 203;
+                            &status) &&
+         AssignIfInRange(http_status, status);
 }
 
 bool ReadResponseHeaders(Stream* stream, HTTPHeaders* headers) {
@@ -514,21 +515,29 @@ bool ReadContentChunked(Stream* stream, std::string* body) {
   return false;
 }
 
-bool ReadResponse(Stream* stream, std::string* response_body) {
+bool ReadResponse(Stream* stream,
+                  std::string* response_body,
+                  int* http_status,
+                  HTTPHeaders* response_headers) {
+  std::string ignored_response_body;
+  if (!response_body) {
+    response_body = &ignored_response_body;
+  }
   response_body->clear();
 
-  if (!ReadResponseLine(stream)) {
+  if (!ReadResponseLine(stream, http_status)) {
     return false;
   }
 
-  HTTPHeaders response_headers;
-  if (!ReadResponseHeaders(stream, &response_headers)) {
+  HTTPHeaders headers;
+  if (!ReadResponseHeaders(stream, &headers)) {
     return false;
   }
+  *response_headers = headers;
 
-  auto it = response_headers.find("Content-Length");
+  auto it = headers.find("Content-Length");
   size_t len = 0;
-  if (it != response_headers.end()) {
+  if (it != headers.end()) {
     if (!base::StringToSizeT(it->second, &len)) {
       LOG(ERROR) << "invalid Content-Length";
       return false;
@@ -540,9 +549,9 @@ bool ReadResponse(Stream* stream, std::string* response_body) {
     return stream->LoggingRead(&(*response_body)[0], len);
   }
 
-  it = response_headers.find("Transfer-Encoding");
+  it = headers.find("Transfer-Encoding");
   bool chunked = false;
-  if (it != response_headers.end() && it->second == "chunked") {
+  if (it != headers.end() && it->second == "chunked") {
     chunked = true;
   }
 
@@ -551,6 +560,8 @@ bool ReadResponse(Stream* stream, std::string* response_body) {
 }
 
 bool HTTPTransportSocket::ExecuteSynchronously(std::string* response_body) {
+  ResetResponse();
+
   std::string scheme, hostname, port, resource;
   if (!CrackURL(url(), &scheme, &hostname, &port, &resource)) {
     return false;
@@ -592,7 +603,18 @@ bool HTTPTransportSocket::ExecuteSynchronously(std::string* response_body) {
     return false;
   }
 
-  if (!ReadResponse(stream.get(), response_body)) {
+  int http_status = 0;
+  HTTPHeaders response_headers;
+  if (!ReadResponse(
+          stream.get(), response_body, &http_status, &response_headers)) {
+    return false;
+  }
+  SetResponseCode(http_status);
+  for (const auto& response_header : response_headers) {
+    SetResponseHeader(response_header.first, response_header.second);
+  }
+  if (!IsExpectedResponseCode(http_status)) {
+    LOG(ERROR) << base::StringPrintf("HTTP status %d", http_status);
     return false;
   }
 

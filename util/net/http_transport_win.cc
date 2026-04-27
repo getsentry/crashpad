@@ -146,6 +146,8 @@ HTTPTransportWin::HTTPTransportWin() : HTTPTransport() {}
 HTTPTransportWin::~HTTPTransportWin() {}
 
 bool HTTPTransportWin::ExecuteSynchronously(std::string* response_body) {
+  ResetResponse();
+
   // ensure the proxy starts with `http://`, otherwise ignore it
   const char proto[] = "http://";
   ScopedHINTERNET session;
@@ -407,7 +409,29 @@ bool HTTPTransportWin::ExecuteSynchronously(std::string* response_body) {
     return false;
   }
 
-  if (status_code < 200 || status_code > 203) {
+  SetResponseCode(static_cast<int>(status_code));
+
+  DWORD location_size = 0;
+  if (!WinHttpQueryHeaders(request.get(),
+                           WINHTTP_QUERY_LOCATION,
+                           WINHTTP_HEADER_NAME_BY_INDEX,
+                           WINHTTP_NO_OUTPUT_BUFFER,
+                           &location_size,
+                           WINHTTP_NO_HEADER_INDEX) &&
+      GetLastError() == ERROR_INSUFFICIENT_BUFFER) {
+    std::wstring location(location_size / sizeof(wchar_t), L'\0');
+    if (WinHttpQueryHeaders(request.get(),
+                            WINHTTP_QUERY_LOCATION,
+                            WINHTTP_HEADER_NAME_BY_INDEX,
+                            &location[0],
+                            &location_size,
+                            WINHTTP_NO_HEADER_INDEX)) {
+      location.resize(wcslen(location.c_str()));
+      SetResponseHeader("Location", base::WideToUTF8(location));
+    }
+  }
+
+  if (!IsExpectedResponseCode(static_cast<int>(status_code))) {
     LOG(ERROR) << base::StringPrintf("HTTP status %lu", status_code);
     return false;
   }

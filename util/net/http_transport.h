@@ -68,6 +68,12 @@ class HTTPTransport {
   //! \param[in] value The value to set for the header.
   void SetHeader(const std::string& header, const std::string& value);
 
+  //! \brief Sets the expected HTTP response status code.
+  //!
+  //! By default, response status codes in the range 200-203 are considered
+  //! successful.
+  void SetExpectedResponseCode(int status_code);
+
   //! \brief Sets the stream object from which to generate the HTTP body.
   //!
   //! \param[in] stream A HTTPBodyStream, of which this class will take
@@ -97,8 +103,16 @@ class HTTPTransport {
   //!     if the response body is not required.
   //!
   //! \return Whether or not the request was successful, defined as returning
-  //!     a HTTP status code in the range 200-203 (inclusive).
+  //!     the expected HTTP status code, or a status code in the range 200-203
+  //!     (inclusive) if no specific expected response code was set.
   virtual bool ExecuteSynchronously(std::string* response_body) = 0;
+
+  //! \brief The HTTP status code returned by the most recent completed request,
+  //!     or 0 if no response was received.
+  int response_code() const { return response_code_; }
+
+  //! \brief The response headers returned by the most recent completed request.
+  const HTTPHeaders& response_headers() const { return response_headers_; }
 
  protected:
   HTTPTransport();
@@ -113,14 +127,22 @@ class HTTPTransport {
     return root_ca_certificate_path_;
   }
 
+  void ResetResponse();
+  void SetResponseCode(int response_code);
+  void SetResponseHeader(const std::string& header, const std::string& value);
+  bool IsExpectedResponseCode(int response_code) const;
+
  private:
   std::string url_;
   std::string http_proxy_;
   std::string method_;
   base::FilePath root_ca_certificate_path_;
   HTTPHeaders headers_;
+  HTTPHeaders response_headers_;
   std::unique_ptr<HTTPBodyStream> body_stream_;
   double timeout_;
+  int expected_response_code_;
+  int response_code_;
 };
 
 }  // namespace crashpad

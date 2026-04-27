@@ -16,6 +16,8 @@
 
 #include <sys/stat.h>
 
+#include <utility>
+
 #include "base/logging.h"
 #include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
@@ -173,6 +175,26 @@ std::string MpackToJsonString(mpack_node_t node) {
   }
 }
 
+bool ReadReaderToString(FileReaderInterface* reader, std::string* data) {
+  if (!reader || !data) {
+    return false;
+  }
+
+  FileOffset current = reader->SeekGet();
+  if (current < 0 || !reader->SeekSet(0)) {
+    return false;
+  }
+
+  data->clear();
+  char buffer[4096];
+  FileOperationResult bytes_read;
+  while ((bytes_read = reader->Read(buffer, sizeof(buffer))) > 0) {
+    data->append(buffer, static_cast<size_t>(bytes_read));
+  }
+
+  return reader->SeekSet(current) && bytes_read == 0;
+}
+
 }  // namespace
 
 CrashReportDatabase::Report::Report()
@@ -310,16 +332,30 @@ bool CrashReportDatabase::Envelope::Initialize(const base::FilePath& path) {
   if (path.empty()) {
     return false;
   }
-  writer_ = std::make_unique<FileWriter>();
-  if (!writer_->Open(
+  file_writer_ = std::make_unique<FileWriter>();
+  if (!file_writer_->Open(
           path, FileWriteMode::kReuseOrCreate, FilePermissions::kOwnerOnly)) {
     return false;
   }
+  writer_ = file_writer_.get();
   writer_->Seek(0, SEEK_END);
   return true;
 }
 
-CrashReportDatabase::Envelope::Envelope(const UUID& uuid) : uuid_(uuid) {}
+bool CrashReportDatabase::Envelope::Initialize(FileWriterInterface* writer) {
+  if (!writer) {
+    return false;
+  }
+
+  file_writer_.reset();
+  writer_ = writer;
+  std::string header =
+      base::StringPrintf("{\"event_id\":\"%s\"}", uuid_.ToString().c_str());
+  return writer_->Write(header.data(), header.size());
+}
+
+CrashReportDatabase::Envelope::Envelope(const UUID& uuid)
+    : uuid_(uuid), writer_(nullptr) {}
 
 void CrashReportDatabase::Envelope::AddAttachments(
     const std::vector<base::FilePath>& attachments) {
@@ -348,8 +384,44 @@ void CrashReportDatabase::Envelope::AddAttachments(
   }
 }
 
+void CrashReportDatabase::Envelope::AddAttachments(
+    const std::map<std::string, FileReader*>& attachments) {
+  FileReader* event = nullptr;
+  std::vector<FileReader*> breadcrumbs;
+  std::vector<std::pair<std::string, FileReader*>> others;
+
+  for (const auto& attachment : attachments) {
+    if (attachment.first == "__sentry-event") {
+      event = attachment.second;
+    } else if (attachment.first.rfind("__sentry-breadcrumb", 0) == 0) {
+      breadcrumbs.push_back(attachment.second);
+    } else {
+      others.push_back(attachment);
+    }
+  }
+
+  std::string event_data;
+  if (ReadReaderToString(event, &event_data)) {
+    std::vector<std::string> breadcrumb_datas;
+    for (FileReader* breadcrumb : breadcrumbs) {
+      std::string breadcrumb_data;
+      if (ReadReaderToString(breadcrumb, &breadcrumb_data)) {
+        breadcrumb_datas.push_back(std::move(breadcrumb_data));
+      }
+    }
+    AddEvent(event_data, breadcrumb_datas);
+  }
+
+  for (const auto& attachment : others) {
+    AddAttachment(attachment.first, attachment.second);
+  }
+}
+
 void CrashReportDatabase::Envelope::AddMinidump(FileReaderInterface* reader) {
   FileOffset size = reader->Seek(0, SEEK_END);
+  if (size < 0) {
+    return;
+  }
   std::string header = base::StringPrintf(
       "{\"type\":\"attachment\","
       "\"length\":%zu,"
@@ -361,7 +433,26 @@ void CrashReportDatabase::Envelope::AddMinidump(FileReaderInterface* reader) {
   writer_->Write(header.data(), header.size());
   writer_->Write("\n", 1);
   reader->Seek(0, SEEK_SET);
-  CopyFileContent(reader, writer_.get());
+  CopyFileContent(reader, writer_);
+}
+
+void CrashReportDatabase::Envelope::AddMinidumpRef(
+    const std::string& filename,
+    const std::string& location,
+    uint64_t size) {
+  AddAttachmentRef(
+      filename, location, "application/octet-stream", "event.minidump", size);
+}
+
+void CrashReportDatabase::Envelope::AddAttachmentRef(
+    const std::string& filename,
+    const std::string& location,
+    uint64_t size) {
+  AddAttachmentRef(filename,
+                   location,
+                   "application/octet-stream",
+                   "event.attachment",
+                   size);
 }
 
 void CrashReportDatabase::Envelope::AddEvent(
@@ -372,23 +463,32 @@ void CrashReportDatabase::Envelope::AddEvent(
     return;
   }
 
+  std::vector<std::string> breadcrumb_datas;
+  for (const auto& breadcrumb : breadcrumbs) {
+    std::string breadcrumb_data;
+    if (LoggingReadEntireFile(breadcrumb, &breadcrumb_data)) {
+      breadcrumb_datas.push_back(std::move(breadcrumb_data));
+    }
+  }
+
+  AddEvent(event_data, breadcrumb_datas);
+}
+
+void CrashReportDatabase::Envelope::AddEvent(
+    const std::string& event_data,
+    const std::vector<std::string>& breadcrumb_datas) {
   mpack_tree_t event_obj;
   mpack_tree_init_data(&event_obj, event_data.data(), event_data.size());
   mpack_tree_parse(&event_obj);
   std::string event_json = MpackToJsonString(mpack_tree_root(&event_obj));
   mpack_tree_destroy(&event_obj);
 
-  // read all breadcrumb files
+  // read all breadcrumbs
   size_t max_breadcrumbs = 0;
   std::vector<std::unique_ptr<mpack_tree_t, mpack_error_t (*)(mpack_tree_t*)>>
       all_breadcrumbs;
-  std::vector<std::string> breadcrumb_datas(breadcrumbs.size());
-  for (size_t i = 0; i < breadcrumbs.size(); ++i) {
-    auto& breadcrumb_data = breadcrumb_datas[i];
-    if (!LoggingReadEntireFile(breadcrumbs[i], &breadcrumb_data)) {
-      continue;
-    }
-
+  for (size_t i = 0; i < breadcrumb_datas.size(); ++i) {
+    const auto& breadcrumb_data = breadcrumb_datas[i];
     size_t count = 0;
     size_t offset = 0;
     while (offset < breadcrumb_data.size()) {
@@ -444,7 +544,6 @@ void CrashReportDatabase::Envelope::AddEvent(
   writer_->Write(header.data(), header.size());
   writer_->Write("\n", 1);
   writer_->Write(payload.data(), payload.size());
-  writer_->Write("\n", 1);
 }
 
 void CrashReportDatabase::Envelope::AddAttachment(
@@ -471,11 +570,61 @@ void CrashReportDatabase::Envelope::AddAttachment(
   writer_->Write(header.data(), header.size());
   writer_->Write("\n", 1);
   writer_->Write(payload.data(), payload.size());
+}
+
+void CrashReportDatabase::Envelope::AddAttachment(
+    const std::string& filename,
+    FileReaderInterface* reader) {
+  FileOffset size = reader->Seek(0, SEEK_END);
+  if (size < 0) {
+    return;
+  }
+
+  std::string header = base::StringPrintf(
+      "{\"type\":\"attachment\","
+      "\"length\":%zu,"
+      "\"attachment_type\":\"event.attachment\","
+      "\"filename\":\"%s\"}",
+      static_cast<size_t>(size),
+      EscapeJsonString(filename).c_str());
   writer_->Write("\n", 1);
+  writer_->Write(header.data(), header.size());
+  writer_->Write("\n", 1);
+  reader->Seek(0, SEEK_SET);
+  CopyFileContent(reader, writer_);
+}
+
+void CrashReportDatabase::Envelope::AddAttachmentRef(
+    const std::string& filename,
+    const std::string& location,
+    const std::string& content_type,
+    const std::string& attachment_type,
+    uint64_t size) {
+  std::string payload = base::StringPrintf(
+      "{\"location\":\"%s\",\"content_type\":\"%s\"}",
+      EscapeJsonString(location).c_str(),
+      EscapeJsonString(content_type).c_str());
+  std::string header = base::StringPrintf(
+      "{\"type\":\"attachment\","
+      "\"length\":%zu,"
+      "\"content_type\":\"application/vnd.sentry.attachment-ref+json\","
+      "\"attachment_length\":%llu,"
+      "\"attachment_type\":\"%s\","
+      "\"filename\":\"%s\"}",
+      payload.size(),
+      static_cast<unsigned long long>(size),
+      EscapeJsonString(attachment_type).c_str(),
+      EscapeJsonString(filename).c_str());
+  writer_->Write("\n", 1);
+  writer_->Write(header.data(), header.size());
+  writer_->Write("\n", 1);
+  writer_->Write(payload.data(), payload.size());
 }
 
 void CrashReportDatabase::Envelope::Finish() {
-  writer_->Close();
+  if (file_writer_) {
+    file_writer_->Close();
+  }
 }
 
 CrashReportDatabase::OperationStatus CrashReportDatabase::RecordUploadComplete(

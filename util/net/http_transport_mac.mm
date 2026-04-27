@@ -211,11 +211,11 @@ class HTTPTransportMac final : public HTTPTransport {
   bool ExecuteSynchronously(std::string* response_body) override;
 
  private:
-  static bool ExecuteNormalRequest(NSMutableURLRequest* request,
-                                   std::string* response_body);
-  static bool ExecuteProxyRequest(NSMutableURLRequest* request,
-                                  const std::string& proxy,
-                                  std::string* response_body);
+  bool ExecuteNormalRequest(NSMutableURLRequest* request,
+                            std::string* response_body);
+  bool ExecuteProxyRequest(NSMutableURLRequest* request,
+                           const std::string& proxy,
+                           std::string* response_body);
 };
 
 HTTPTransportMac::HTTPTransportMac() : HTTPTransport() {}
@@ -253,7 +253,13 @@ bool HTTPTransportMac::ExecuteNormalRequest(NSMutableURLRequest* request,
       return false;
     }
     NSInteger http_status = [http_response statusCode];
-    if (http_status < 200 || http_status > 203) {
+    SetResponseCode(implicit_cast<int>(http_status));
+    NSString* location =
+        [[http_response allHeaderFields] objectForKey:@"Location"];
+    if (location) {
+      SetResponseHeader("Location", [location UTF8String]);
+    }
+    if (!IsExpectedResponseCode(implicit_cast<int>(http_status))) {
       LOG(ERROR) << base::StringPrintf("HTTP status %ld",
                                        implicit_cast<long>(http_status));
       return false;
@@ -333,7 +339,13 @@ bool HTTPTransportMac::ExecuteProxyRequest(NSMutableURLRequest* request,
               return;
             }
             NSInteger http_status = [http_response statusCode];
-            if (http_status < 200 || http_status > 203) {
+            SetResponseCode(implicit_cast<int>(http_status));
+            NSString* location =
+                [[http_response allHeaderFields] objectForKey:@"Location"];
+            if (location) {
+              SetResponseHeader("Location", [location UTF8String]);
+            }
+            if (!IsExpectedResponseCode(implicit_cast<int>(http_status))) {
               LOG(ERROR) << base::StringPrintf(
                   "HTTP status %ld", implicit_cast<long>(http_status));
               sync_rv = false;
@@ -368,6 +380,8 @@ bool HTTPTransportMac::ExecuteProxyRequest(NSMutableURLRequest* request,
 
 bool HTTPTransportMac::ExecuteSynchronously(std::string* response_body) {
   DCHECK(body_stream());
+
+  ResetResponse();
 
   @autoreleasepool {
     NSString* url_ns_string = base::SysUTF8ToNSString(url());

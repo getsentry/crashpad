@@ -15,11 +15,15 @@
 #include "handler/crash_report_upload_thread.h"
 
 #include <errno.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
 #include <time.h>
 
 #include <algorithm>
 #include <map>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -34,12 +38,14 @@
 #include "snapshot/minidump/process_snapshot_minidump.h"
 #include "snapshot/module_snapshot.h"
 #include "util/file/file_reader.h"
+#include "util/file/string_file.h"
 #include "util/misc/metrics.h"
 #include "util/misc/uuid.h"
 #include "util/net/http_body.h"
 #include "util/net/http_multipart_builder.h"
 #include "util/net/http_transport.h"
 #include "util/net/url.h"
+#include "util/numeric/safe_assignment.h"
 #include "util/stdlib/map_insert.h"
 
 #if BUILDFLAG(IS_APPLE)
@@ -62,6 +68,276 @@ const int kRetryWorkIntervalSeconds = 15 * 60;
 // ReportPending(), and, if Options.watch_pending_reports is true, once every
 // kRetryWorkIntervalSeconds.
 const int kRetryAttempts = 5;
+
+constexpr uint64_t kSentryLargeAttachmentSize = 100ull * 1024 * 1024;  // 100 MiB
+constexpr uint64_t kSentryMaxAttachmentSize = 1024ull * 1024 * 1024;  // 1 GiB
+constexpr char kTusResumable[] = "1.0.0";
+constexpr char kTusMime[] = "application/offset+octet-stream";
+
+struct LargeAttachmentUploadContext {
+  std::string origin;
+  std::string upload_url;
+  std::string envelope_url;
+  std::string auth_header;
+};
+
+struct UploadedLargeAttachment {
+  std::string name;
+  std::string location;
+  uint64_t size;
+};
+
+bool StartsWith(const std::string& string, const char* prefix) {
+  return string.compare(0, strlen(prefix), prefix) == 0;
+}
+
+bool EndsWith(const std::string& string, const char* suffix) {
+  const size_t suffix_length = strlen(suffix);
+  return string.size() >= suffix_length &&
+         string.compare(string.size() - suffix_length, suffix_length, suffix) ==
+             0;
+}
+
+char LowerASCII(char c) {
+  return c >= 'A' && c <= 'Z' ? c + ('a' - 'A') : c;
+}
+
+bool EqualsCaseInsensitiveASCII(const std::string& lhs,
+                                const std::string& rhs) {
+  if (lhs.size() != rhs.size()) {
+    return false;
+  }
+
+  for (size_t i = 0; i < lhs.size(); ++i) {
+    if (LowerASCII(lhs[i]) != LowerASCII(rhs[i])) {
+      return false;
+    }
+  }
+  return true;
+}
+
+std::string HeaderValue(const HTTPHeaders& headers, const char* name) {
+  for (const auto& header : headers) {
+    if (EqualsCaseInsensitiveASCII(header.first, name)) {
+      return header.second;
+    }
+  }
+  return std::string();
+}
+
+std::string QueryValue(const std::string& query, const char* name) {
+  size_t start = 0;
+  while (start <= query.size()) {
+    size_t end = query.find('&', start);
+    if (end == std::string::npos) {
+      end = query.size();
+    }
+
+    const std::string pair = query.substr(start, end - start);
+    const size_t equals = pair.find('=');
+    if (equals != std::string::npos && pair.compare(0, equals, name) == 0) {
+      return pair.substr(equals + 1);
+    }
+
+    if (end == query.size()) {
+      break;
+    }
+    start = end + 1;
+  }
+  return std::string();
+}
+
+bool BuildLargeAttachmentUploadContext(const std::string& minidump_url,
+                                       LargeAttachmentUploadContext* context) {
+  std::string scheme;
+  std::string host;
+  std::string port;
+  std::string rest;
+  if (!CrackURL(minidump_url, &scheme, &host, &port, &rest)) {
+    return false;
+  }
+
+  const size_t query_separator = rest.find('?');
+  const std::string path = rest.substr(0, query_separator);
+  const std::string query = query_separator == std::string::npos
+                                ? std::string()
+                                : rest.substr(query_separator + 1);
+  static constexpr char kMinidumpPathSuffix[] = "/minidump/";
+  if (!EndsWith(path, kMinidumpPathSuffix)) {
+    return false;
+  }
+
+  const std::string sentry_key = QueryValue(query, "sentry_key");
+  if (sentry_key.empty()) {
+    return false;
+  }
+
+  context->origin = base::StringPrintf(
+      "%s://%s:%s", scheme.c_str(), host.c_str(), port.c_str());
+  context->upload_url =
+      context->origin +
+      path.substr(0, path.size() - strlen(kMinidumpPathSuffix)) + "/upload/";
+  context->envelope_url =
+      context->origin +
+      path.substr(0, path.size() - strlen(kMinidumpPathSuffix)) + "/envelope/";
+
+  context->auth_header =
+      "Sentry sentry_key=" + sentry_key + ", sentry_version=7";
+  const std::string sentry_client = QueryValue(query, "sentry_client");
+  if (!sentry_client.empty()) {
+    context->auth_header += ", sentry_client=" + sentry_client;
+  }
+
+  return true;
+}
+
+std::string ResolveLargeAttachmentUploadLocation(
+    const LargeAttachmentUploadContext& context,
+    const std::string& location) {
+  if (StartsWith(location, "http://") || StartsWith(location, "https://")) {
+    return location;
+  }
+  if (!location.empty() && location[0] == '/') {
+    return context.origin + location;
+  }
+  return location;
+}
+
+bool GetReaderSize(FileReaderInterface* reader, uint64_t* size) {
+  const FileOffset current = reader->SeekGet();
+  if (current < 0) {
+    return false;
+  }
+
+  const FileOffset end = reader->Seek(0, SEEK_END);
+  if (end < 0) {
+    reader->SeekSet(current);
+    return false;
+  }
+
+  const bool assigned = AssignIfInRange(size, end);
+  if (!reader->SeekSet(current)) {
+    return false;
+  }
+  return assigned;
+}
+
+bool CreateLargeAttachmentUpload(const LargeAttachmentUploadContext& context,
+                                 const std::string& http_proxy,
+                                 uint64_t upload_size,
+                                 bool* upload_available,
+                                 std::string* location) {
+  std::unique_ptr<HTTPTransport> http_transport(HTTPTransport::Create());
+  if (!http_transport) {
+    return false;
+  }
+
+  http_transport->SetURL(context.upload_url);
+  http_transport->SetHTTPProxy(http_proxy);
+  http_transport->SetHeader("x-sentry-auth", context.auth_header);
+  http_transport->SetHeader("tus-resumable", kTusResumable);
+  http_transport->SetHeader("upload-length", std::to_string(upload_size));
+  http_transport->SetHeader(kContentLength, "0");
+  http_transport->SetBodyStream(std::make_unique<StringHTTPBodyStream>(""));
+  http_transport->SetExpectedResponseCode(201);
+  http_transport->SetTimeout(internal::kUploadReportTimeoutSeconds);
+
+  std::string response_body;
+  if (!http_transport->ExecuteSynchronously(&response_body)) {
+    if (http_transport->response_code() == 404) {
+      LOG(WARNING) << "large attachment upload endpoint returned 404, "
+                      "disabling separate upload";
+      *upload_available = false;
+    }
+    return false;
+  }
+
+  *location = HeaderValue(http_transport->response_headers(), "Location");
+  if (location->empty()) {
+    LOG(WARNING) << "large attachment upload response did not include Location";
+    return false;
+  }
+  return true;
+}
+
+bool UploadLargeAttachmentBytes(const LargeAttachmentUploadContext& context,
+                                const std::string& http_proxy,
+                                FileReaderInterface* reader,
+                                uint64_t upload_size,
+                                const std::string& location) {
+  if (!reader->SeekSet(0)) {
+    return false;
+  }
+
+  std::unique_ptr<HTTPTransport> http_transport(HTTPTransport::Create());
+  if (!http_transport) {
+    return false;
+  }
+
+  http_transport->SetURL(
+      ResolveLargeAttachmentUploadLocation(context, location));
+  http_transport->SetHTTPProxy(http_proxy);
+  http_transport->SetMethod("PATCH");
+  http_transport->SetHeader("x-sentry-auth", context.auth_header);
+  http_transport->SetHeader("tus-resumable", kTusResumable);
+  http_transport->SetHeader(kContentType, kTusMime);
+  http_transport->SetHeader("upload-offset", "0");
+  http_transport->SetHeader(kContentLength, std::to_string(upload_size));
+  http_transport->SetBodyStream(
+      std::make_unique<FileReaderHTTPBodyStream>(reader));
+  http_transport->SetExpectedResponseCode(204);
+  http_transport->SetTimeout(internal::kUploadReportTimeoutSeconds);
+
+  std::string response_body;
+  const bool ok = http_transport->ExecuteSynchronously(&response_body);
+  reader->SeekSet(0);
+  return ok;
+}
+
+bool UploadLargeAttachment(const LargeAttachmentUploadContext& context,
+                           const std::string& http_proxy,
+                           const std::string& attachment_name,
+                           FileReaderInterface* reader,
+                           uint64_t upload_size,
+                           bool* upload_available,
+                           std::string* location) {
+  if (!CreateLargeAttachmentUpload(
+          context, http_proxy, upload_size, upload_available, location)) {
+    return false;
+  }
+
+  if (!UploadLargeAttachmentBytes(
+          context, http_proxy, reader, upload_size, *location)) {
+    LOG(WARNING) << "large attachment upload failed for " << attachment_name;
+    location->clear();
+    reader->SeekSet(0);
+    return false;
+  }
+
+  return true;
+}
+
+bool UploadLargeAttachmentEnvelope(const LargeAttachmentUploadContext& context,
+                                   const std::string& http_proxy,
+                                   const StringFile& envelope,
+                                   std::string* response_body) {
+  std::unique_ptr<HTTPTransport> http_transport(HTTPTransport::Create());
+  if (!http_transport) {
+    return false;
+  }
+
+  http_transport->SetURL(context.envelope_url);
+  http_transport->SetHTTPProxy(http_proxy);
+  http_transport->SetHeader("x-sentry-auth", context.auth_header);
+  http_transport->SetHeader(kContentType, "application/x-sentry-envelope");
+  http_transport->SetHeader(kContentLength,
+                            std::to_string(envelope.string().size()));
+  http_transport->SetBodyStream(
+      std::make_unique<StringHTTPBodyStream>(envelope.string()));
+  http_transport->SetTimeout(internal::kUploadReportTimeoutSeconds);
+
+  return http_transport->ExecuteSynchronously(response_body);
+}
 
 // Wraps a reference to a no-args function (which can be empty). When this
 // object goes out of scope, invokes the function if it is non-empty.
@@ -310,10 +586,110 @@ CrashReportUploadThread::UploadResult CrashReportUploadThread::UploadReport(
     return UploadResult::kPermanentFailure;
   }
 
+  static constexpr char kMinidumpKey[] = "upload_file_minidump";
+
+  LargeAttachmentUploadContext large_attachment_upload_context;
+  bool large_attachment_upload_available =
+      options_.enable_large_attachments &&
+      BuildLargeAttachmentUploadContext(url_, &large_attachment_upload_context);
+  if (options_.enable_large_attachments && !large_attachment_upload_available) {
+    LOG(WARNING) << "large attachments enabled, but large attachment upload "
+                    "context could not be derived from the report URL";
+  }
+
+  std::map<std::string, FileReader*> attachments = report->GetAttachments();
+  std::vector<UploadedLargeAttachment> uploaded_attachments;
+  for (auto it = attachments.begin(); it != attachments.end();) {
+    if (options_.enable_large_attachments) {
+      uint64_t attachment_size = 0;
+      if (!GetReaderSize(it->second, &attachment_size)) {
+        return UploadResult::kPermanentFailure;
+      }
+
+      if (attachment_size > kSentryMaxAttachmentSize) {
+        LOG(WARNING) << "discarding attachment " << it->first
+                     << " because it exceeds the maximum attachment size";
+        it = attachments.erase(it);
+        continue;
+      }
+
+      if (large_attachment_upload_available &&
+          attachment_size >= kSentryLargeAttachmentSize) {
+        std::string location;
+        if (UploadLargeAttachment(large_attachment_upload_context,
+                                  http_proxy_,
+                                  it->first,
+                                  it->second,
+                                  attachment_size,
+                                  &large_attachment_upload_available,
+                                  &location)) {
+          uploaded_attachments.push_back(
+              {it->first, location, attachment_size});
+          it = attachments.erase(it);
+          continue;
+        }
+      }
+    }
+
+    ++it;
+  }
+
+  const std::string minidump_name = report->uuid.ToString() + ".dmp";
+  bool minidump_uploaded_separately = false;
+  uint64_t minidump_size = 0;
+  std::string minidump_location;
+  if (options_.enable_large_attachments) {
+    if (!GetReaderSize(reader, &minidump_size)) {
+      return UploadResult::kPermanentFailure;
+    }
+
+    if (large_attachment_upload_available &&
+        minidump_size >= kSentryLargeAttachmentSize &&
+        minidump_size <= kSentryMaxAttachmentSize) {
+      std::string location;
+      if (UploadLargeAttachment(large_attachment_upload_context,
+                                http_proxy_,
+                                minidump_name,
+                                reader,
+                                minidump_size,
+                                &large_attachment_upload_available,
+                                &minidump_location)) {
+        minidump_uploaded_separately = true;
+      }
+    }
+  }
+
+  if (minidump_uploaded_separately || !uploaded_attachments.empty()) {
+    StringFile envelope_file;
+    CrashReportDatabase::Envelope envelope(report->uuid);
+    if (!envelope.Initialize(&envelope_file)) {
+      return UploadResult::kPermanentFailure;
+    }
+
+    envelope.AddAttachments(attachments);
+    if (minidump_uploaded_separately) {
+      envelope.AddMinidumpRef(minidump_name, minidump_location, minidump_size);
+    } else {
+      envelope.AddMinidump(reader);
+    }
+    for (const auto& attachment : uploaded_attachments) {
+      envelope.AddAttachmentRef(
+          attachment.name, attachment.location, attachment.size);
+    }
+    envelope.Finish();
+
+    if (!UploadLargeAttachmentEnvelope(large_attachment_upload_context,
+                                       http_proxy_,
+                                       envelope_file,
+                                       response_body)) {
+      return UploadResult::kRetry;
+    }
+
+    return UploadResult::kSuccess;
+  }
+
   HTTPMultipartBuilder http_multipart_builder;
   http_multipart_builder.SetGzipEnabled(options_.upload_gzip);
-
-  static constexpr char kMinidumpKey[] = "upload_file_minidump";
 
   for (const auto& kv : parameters) {
     if (kv.first == kMinidumpKey) {
@@ -324,13 +700,13 @@ CrashReportUploadThread::UploadResult CrashReportUploadThread::UploadReport(
     }
   }
 
-  for (const auto& it : report->GetAttachments()) {
+  for (const auto& it : attachments) {
     http_multipart_builder.SetFileAttachment(
         it.first, it.first, it.second, "application/octet-stream");
   }
 
   http_multipart_builder.SetFileAttachment(kMinidumpKey,
-                                           report->uuid.ToString() + ".dmp",
+                                           minidump_name,
                                            reader,
                                            "application/octet-stream");
 

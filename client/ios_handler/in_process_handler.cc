@@ -88,6 +88,7 @@ bool InProcessHandler::Initialize(
     CrashReportUploadThread::Options upload_thread_options;
     upload_thread_options.rate_limit = false;
     upload_thread_options.upload_gzip = true;
+    upload_thread_options.enable_large_attachments = false;
     upload_thread_options.watch_pending_reports = true;
     upload_thread_options.identify_client_via_url = true;
 

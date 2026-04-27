@@ -116,6 +116,10 @@ void Usage(const base::FilePath& me) {
 "                              at the time of the crash\n"
   // clang-format on
 #endif  // ATTACHMENTS_SUPPORTED
+      // clang-format off
+"      --enable-large-attachments\n"
+"                              enable separate upload for large attachments\n"
+  // clang-format on
 #if defined(SCREENSHOT_SUPPORTED)
       // clang-format off
 "      --screenshot=FILE_PATH  capture a screenshot to FILE_PATH\n"
@@ -260,6 +264,7 @@ struct Options {
   InitialClientData initial_client_data;
 #endif  // BUILDFLAG(IS_APPLE)
   bool identify_client_via_url;
+  bool enable_large_attachments;
   bool monitor_self;
   bool periodic_tasks;
   bool rate_limit;
@@ -514,6 +519,9 @@ void MonitorSelf(const Options& options) {
   if (!options.upload_gzip) {
     extra_arguments.push_back("--no-upload-gzip");
   }
+  if (options.enable_large_attachments) {
+    extra_arguments.push_back("--enable-large-attachments");
+  }
   for (const auto& iterator : options.monitor_self_annotations) {
     extra_arguments.push_back(
         base::StringPrintf("--monitor-self-annotation=%s=%s",
@@ -662,6 +670,7 @@ int HandlerMain(int argc,
 #if BUILDFLAG(IS_APPLE)
     kOptionMachService,
 #endif  // BUILDFLAG(IS_APPLE)
+    kOptionEnableLargeAttachments,
     kOptionMetrics,
     kOptionMonitorSelf,
     kOptionMonitorSelfAnnotation,
@@ -733,6 +742,10 @@ int HandlerMain(int argc,
 #if BUILDFLAG(IS_APPLE)
     {"mach-service", required_argument, nullptr, kOptionMachService},
 #endif  // BUILDFLAG(IS_APPLE)
+    {"enable-large-attachments",
+     no_argument,
+     nullptr,
+     kOptionEnableLargeAttachments},
     {"metrics-dir", required_argument, nullptr, kOptionMetrics},
     {"monitor-self", no_argument, nullptr, kOptionMonitorSelf},
     {"monitor-self-annotation",
@@ -890,6 +903,10 @@ int HandlerMain(int argc,
       case kOptionMetrics: {
         options.metrics_dir = base::FilePath(
             ToolSupport::CommandLineArgumentToFilePathStringType(optarg));
+        break;
+      }
+      case kOptionEnableLargeAttachments: {
+        options.enable_large_attachments = true;
         break;
       }
       case kOptionMonitorSelf: {
@@ -1149,6 +1166,8 @@ int HandlerMain(int argc,
         options.identify_client_via_url;
     upload_thread_options.rate_limit = options.rate_limit;
     upload_thread_options.upload_gzip = options.upload_gzip;
+    upload_thread_options.enable_large_attachments =
+        options.enable_large_attachments;
     upload_thread_options.watch_pending_reports = options.periodic_tasks;
 
     upload_thread.Reset(new CrashReportUploadThread(

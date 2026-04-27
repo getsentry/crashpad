@@ -57,6 +57,9 @@ class CrashReportUploadThread : public WorkerThread::Delegate,
     //! Whether uploads should use `gzip` compression.
     bool upload_gzip;
 
+    //! Whether large attachments should be handled by the upload thread.
+    bool enable_large_attachments;
+
     //! Whether to periodically check for new pending reports not already known
     //! to exist. When `false`, only an initial upload attempt will be made for
     //! reports known to exist by having been added by the ReportPending()

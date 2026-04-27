@@ -210,13 +210,38 @@ class CrashReportDatabase {
     //! \return true on success, false on failure.
     bool Initialize(const base::FilePath& path);
 
+    //! \brief Initializes the report with a writer and writes envelope headers.
+    //! \param[in] writer The writer where the report will be written.
+    //! \return true on success, false on failure.
+    bool Initialize(FileWriterInterface* writer);
+
     //! \brief Adds attachments to the feedback report.
     //! \param[in] attachments Vector of file paths to attach.
     void AddAttachments(const std::vector<base::FilePath>& attachments);
 
+    //! \brief Adds attachments to the feedback report.
+    //! \param[in] attachments Map of file names to file readers.
+    void AddAttachments(const std::map<std::string, FileReader*>& attachments);
+
     //! \brief Adds minidump data to the feedback report.
     //! \param[in] reader File reader for the minidump data.
     void AddMinidump(FileReaderInterface* reader);
+
+    //! \brief Adds a minidump reference to the feedback report.
+    //! \param[in] filename The file name to use in the envelope item.
+    //! \param[in] location The upload location for the minidump.
+    //! \param[in] size The size of the minidump in bytes.
+    void AddMinidumpRef(const std::string& filename,
+                        const std::string& location,
+                        uint64_t size);
+
+    //! \brief Adds an attachment reference to the feedback report.
+    //! \param[in] filename The file name to use in the envelope item.
+    //! \param[in] location The upload location for the attachment.
+    //! \param[in] size The size of the attachment in bytes.
+    void AddAttachmentRef(const std::string& filename,
+                          const std::string& location,
+                          uint64_t size);
 
     //! \brief Finalizes the feedback report and closes file handles.
     void Finish();
@@ -224,11 +249,21 @@ class CrashReportDatabase {
    private:
     void AddEvent(const base::FilePath& event,
                   const std::vector<base::FilePath>& breadcrumbs);
+    void AddEvent(const std::string& event_data,
+                  const std::vector<std::string>& breadcrumb_datas);
     void AddAttachment(const base::FilePath& attachment);
+    void AddAttachment(const std::string& filename,
+                       FileReaderInterface* reader);
+    void AddAttachmentRef(const std::string& filename,
+                          const std::string& location,
+                          const std::string& content_type,
+                          const std::string& attachment_type,
+                          uint64_t size);
 
     UUID uuid_;
     base::FilePath path_;
-    std::unique_ptr<FileWriter> writer_;
+    std::unique_ptr<FileWriter> file_writer_;
+    FileWriterInterface* writer_;
   };
 
   //! \brief The result code for operations performed on a database.
