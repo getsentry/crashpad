@@ -17,6 +17,8 @@
 #import <Foundation/Foundation.h>
 #include <sys/utsname.h>
 
+#include <limits>
+
 #include "base/apple/bridging.h"
 #include "base/apple/foundation_util.h"
 #include "base/strings/stringprintf.h"
@@ -197,6 +199,14 @@ NSString* UserAgentString() {
   }
 
   return user_agent;
+}
+
+NSTimeInterval RequestTimeoutInterval(double transfer_timeout) {
+  if (transfer_timeout > 0) {
+    return transfer_timeout;
+  }
+  // NSURLRequest has no disabled timeout sentinel.
+  return std::numeric_limits<NSTimeInterval>::max();
 }
 
 class HTTPTransportMac final : public HTTPTransport {
@@ -391,9 +401,8 @@ bool HTTPTransportMac::ExecuteSynchronously(std::string* response_body) {
     NSMutableURLRequest* request =
         [NSMutableURLRequest requestWithURL:url
                                 cachePolicy:NSURLRequestUseProtocolCachePolicy
-                            timeoutInterval:transfer_timeout() > 0
-                                                ? transfer_timeout()
-                                                : connect_timeout()];
+                            timeoutInterval:RequestTimeoutInterval(
+                                                transfer_timeout())];
     [request setHTTPMethod:base::SysUTF8ToNSString(method())];
 
     // If left to its own devices, CFNetwork would build a user-agent string
