@@ -605,13 +605,14 @@ bool HTTPTransportSocket::ExecuteSynchronously(std::string* response_body) {
 
   int http_status = 0;
   HTTPHeaders response_headers;
-  if (!ReadResponse(
-          stream.get(), response_body, &http_status, &response_headers)) {
-    return false;
-  }
+  const bool response_read =
+      ReadResponse(stream.get(), response_body, &http_status, &response_headers);
   SetResponseCode(http_status);
   for (const auto& response_header : response_headers) {
     SetResponseHeader(response_header.first, response_header.second);
+  }
+  if (!response_read) {
+    return false;
   }
   if (!IsExpectedResponseCode(http_status)) {
     LOG(ERROR) << base::StringPrintf("HTTP status %d", http_status);
