@@ -629,7 +629,6 @@ CrashReportUploadThread::UploadResult CrashReportUploadThread::UploadReport(
     if (large_attachment_upload_available &&
         minidump_size >= kSentryLargeAttachmentSize &&
         minidump_size <= kSentryMaxAttachmentSize) {
-      std::string location;
       if (UploadLargeAttachment(large_attachment_upload_context,
                                 http_proxy_,
                                 minidump_name,
