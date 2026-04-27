@@ -391,7 +391,9 @@ bool HTTPTransportMac::ExecuteSynchronously(std::string* response_body) {
     NSMutableURLRequest* request =
         [NSMutableURLRequest requestWithURL:url
                                 cachePolicy:NSURLRequestUseProtocolCachePolicy
-                            timeoutInterval:timeout()];
+                            timeoutInterval:transfer_timeout() > 0
+                                                ? transfer_timeout()
+                                                : connect_timeout()];
     [request setHTTPMethod:base::SysUTF8ToNSString(method())];
 
     // If left to its own devices, CFNetwork would build a user-agent string

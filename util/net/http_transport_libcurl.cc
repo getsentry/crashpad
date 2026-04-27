@@ -407,9 +407,16 @@ bool HTTPTransportLibcurl::ExecuteSynchronously(std::string* response_body) {
   }
 
   constexpr int kMillisecondsPerSecond = 1E3;
-  TRY_CURL_EASY_SETOPT(curl.get(),
-                       CURLOPT_TIMEOUT_MS,
-                       static_cast<long>(timeout() * kMillisecondsPerSecond));
+  TRY_CURL_EASY_SETOPT(
+      curl.get(),
+      CURLOPT_CONNECTTIMEOUT_MS,
+      static_cast<long>(connect_timeout() * kMillisecondsPerSecond));
+  if (transfer_timeout() > 0) {
+    TRY_CURL_EASY_SETOPT(
+        curl.get(),
+        CURLOPT_TIMEOUT_MS,
+        static_cast<long>(transfer_timeout() * kMillisecondsPerSecond));
+  }
 
   // If the request body size is known ahead of time, a Content-Length header
   // field will be present. Store that to use as CURLOPT_POSTFIELDSIZE_LARGE,

@@ -26,7 +26,8 @@ HTTPTransport::HTTPTransport()
       headers_(),
       response_headers_(),
       body_stream_(),
-      timeout_(15.0),
+      connect_timeout_(15.0),
+      transfer_timeout_(15.0),
       expected_response_code_(0),
       response_code_(0) {
 }
@@ -60,7 +61,16 @@ void HTTPTransport::SetBodyStream(std::unique_ptr<HTTPBodyStream> stream) {
 }
 
 void HTTPTransport::SetTimeout(double timeout) {
-  timeout_ = timeout;
+  SetConnectTimeout(timeout);
+  SetTransferTimeout(timeout);
+}
+
+void HTTPTransport::SetConnectTimeout(double timeout) {
+  connect_timeout_ = timeout;
+}
+
+void HTTPTransport::SetTransferTimeout(double timeout) {
+  transfer_timeout_ = timeout;
 }
 
 void HTTPTransport::SetRootCACertificatePath(const base::FilePath& cert) {

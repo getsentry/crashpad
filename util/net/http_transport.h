@@ -80,10 +80,22 @@ class HTTPTransport {
   //!     ownership.
   void SetBodyStream(std::unique_ptr<HTTPBodyStream> stream);
 
-  //! \brief Sets the timeout for the HTTP request. The default is 15 seconds.
+  //! \brief Sets the connect and transfer timeouts for the HTTP request. The
+  //!     default is 15 seconds.
   //!
   //! \param[in] timeout The request timeout, in seconds.
   void SetTimeout(double timeout);
+
+  //! \brief Sets the timeout for establishing the HTTP connection.
+  //!
+  //! \param[in] timeout The connect timeout, in seconds.
+  void SetConnectTimeout(double timeout);
+
+  //! \brief Sets the timeout for the HTTP transfer.
+  //!
+  //! \param[in] timeout The transfer timeout, in seconds. A value of `0`
+  //!     disables the transfer timeout where supported.
+  void SetTransferTimeout(double timeout);
 
   //! \brief Sets a certificate file to be used in lieu of the system CA cert
   //!     bundle.
@@ -122,7 +134,8 @@ class HTTPTransport {
   const std::string& method() const { return method_; }
   const HTTPHeaders& headers() const { return headers_; }
   HTTPBodyStream* body_stream() const { return body_stream_.get(); }
-  double timeout() const { return timeout_; }
+  double connect_timeout() const { return connect_timeout_; }
+  double transfer_timeout() const { return transfer_timeout_; }
   const base::FilePath& root_ca_certificate_path() const {
     return root_ca_certificate_path_;
   }
@@ -140,7 +153,8 @@ class HTTPTransport {
   HTTPHeaders headers_;
   HTTPHeaders response_headers_;
   std::unique_ptr<HTTPBodyStream> body_stream_;
-  double timeout_;
+  double connect_timeout_;
+  double transfer_timeout_;
   int expected_response_code_;
   int response_code_;
 };

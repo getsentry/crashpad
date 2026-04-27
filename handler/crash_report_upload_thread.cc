@@ -269,6 +269,7 @@ bool UploadLargeAttachmentBytes(const LargeAttachmentUploadContext& context,
       std::make_unique<FileReaderHTTPBodyStream>(reader));
   http_transport->SetExpectedResponseCode(204);
   http_transport->SetTimeout(internal::kUploadReportTimeoutSeconds);
+  http_transport->SetTransferTimeout(0);
 
   std::string response_body;
   const bool ok = http_transport->ExecuteSynchronously(&response_body);

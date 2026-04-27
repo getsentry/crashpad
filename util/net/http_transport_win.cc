@@ -239,12 +239,13 @@ bool HTTPTransportWin::ExecuteSynchronously(std::string* response_body) {
     return false;
   }
 
-  int timeout_in_ms = static_cast<int>(timeout() * 1000);
+  int connect_timeout_in_ms = static_cast<int>(connect_timeout() * 1000);
+  int transfer_timeout_in_ms = static_cast<int>(transfer_timeout() * 1000);
   if (!WinHttpSetTimeouts(session.get(),
-                          timeout_in_ms,
-                          timeout_in_ms,
-                          timeout_in_ms,
-                          timeout_in_ms)) {
+                          connect_timeout_in_ms,
+                          connect_timeout_in_ms,
+                          transfer_timeout_in_ms,
+                          transfer_timeout_in_ms)) {
     LOG(ERROR) << WinHttpMessage("WinHttpSetTimeouts");
     return false;
   }
