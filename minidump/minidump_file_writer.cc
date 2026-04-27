@@ -14,6 +14,8 @@
 
 #include "minidump/minidump_file_writer.h"
 
+#include <algorithm>
+#include <string>
 #include <utility>
 
 #include "base/check_op.h"
@@ -45,6 +47,46 @@
 #include "util/numeric/safe_assignment.h"
 
 namespace crashpad {
+
+namespace {
+
+constexpr size_t kLargeMinidumpTestStreamDefaultSize = 256ull * 1024 * 1024;
+constexpr MinidumpStreamType kLargeMinidumpTestStreamType =
+    static_cast<MinidumpStreamType>(0x54455354);
+constexpr bool kEnableLargeMinidumpTestStream = true;
+
+class LargeMinidumpTestStreamDataSource final
+    : public MinidumpUserExtensionStreamDataSource {
+ public:
+  explicit LargeMinidumpTestStreamDataSource(size_t size)
+      : MinidumpUserExtensionStreamDataSource(kLargeMinidumpTestStreamType),
+        size_(size) {}
+
+  LargeMinidumpTestStreamDataSource(
+      const LargeMinidumpTestStreamDataSource&) = delete;
+  LargeMinidumpTestStreamDataSource& operator=(
+      const LargeMinidumpTestStreamDataSource&) = delete;
+
+  size_t StreamDataSize() override { return size_; }
+
+  bool ReadStreamData(Delegate* delegate) override {
+    const std::string chunk(1024 * 1024, 'm');
+    size_t remaining = size_;
+    while (remaining > 0) {
+      const size_t size = std::min(remaining, chunk.size());
+      if (!delegate->ExtensionStreamDataSourceRead(chunk.data(), size)) {
+        return false;
+      }
+      remaining -= size;
+    }
+    return true;
+  }
+
+ private:
+  size_t size_;
+};
+
+}  // namespace
 
 MinidumpFileWriter::MinidumpFileWriter()
     : MinidumpWritable(), header_(), streams_(), stream_types_() {
@@ -203,6 +245,14 @@ void MinidumpFileWriter::InitializeFromSnapshot(
       user_stream->InitializeFromSnapshot(stream);
       AddStream(std::move(user_stream));
     }
+  }
+
+  if (kEnableLargeMinidumpTestStream) {
+    LOG(WARNING) << "adding large minidump test stream of "
+                 << kLargeMinidumpTestStreamDefaultSize << " bytes";
+    AddUserExtensionStream(
+        std::make_unique<LargeMinidumpTestStreamDataSource>(
+            kLargeMinidumpTestStreamDefaultSize));
   }
 
   // The memory list stream should be added last. This keeps the “extra memory”
