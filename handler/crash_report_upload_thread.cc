@@ -155,8 +155,7 @@ bool BuildLargeAttachmentUploadContext(const std::string& minidump_url,
     return false;
   }
 
-  context->origin = base::StringPrintf(
-      "%s://%s:%s", scheme.c_str(), host.c_str(), port.c_str());
+  context->origin = minidump_url.substr(0, minidump_url.size() - rest.size());
   context->upload_url =
       context->origin +
       path.substr(0, path.size() - strlen(kMinidumpPathSuffix)) + "/upload/";
