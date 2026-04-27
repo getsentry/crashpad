@@ -139,11 +139,62 @@ class HTTPTransportWin final : public HTTPTransport {
   ~HTTPTransportWin() override;
 
   bool ExecuteSynchronously(std::string* response_body) override;
+
+ private:
+  void SetResponseHeaders(HINTERNET request);
 };
 
 HTTPTransportWin::HTTPTransportWin() : HTTPTransport() {}
 
 HTTPTransportWin::~HTTPTransportWin() {}
+
+void HTTPTransportWin::SetResponseHeaders(HINTERNET request) {
+  DWORD headers_size = 0;
+  if (WinHttpQueryHeaders(request,
+                          WINHTTP_QUERY_RAW_HEADERS_CRLF,
+                          WINHTTP_HEADER_NAME_BY_INDEX,
+                          WINHTTP_NO_OUTPUT_BUFFER,
+                          &headers_size,
+                          WINHTTP_NO_HEADER_INDEX) ||
+      GetLastError() != ERROR_INSUFFICIENT_BUFFER) {
+    return;
+  }
+
+  std::wstring headers(headers_size / sizeof(wchar_t), L'\0');
+  if (!WinHttpQueryHeaders(request,
+                           WINHTTP_QUERY_RAW_HEADERS_CRLF,
+                           WINHTTP_HEADER_NAME_BY_INDEX,
+                           &headers[0],
+                           &headers_size,
+                           WINHTTP_NO_HEADER_INDEX)) {
+    return;
+  }
+  headers.resize(wcslen(headers.c_str()));
+
+  size_t line_start = 0;
+  while (line_start < headers.size()) {
+    size_t line_end = headers.find(L"\r\n", line_start);
+    if (line_end == std::wstring::npos) {
+      line_end = headers.size();
+    }
+    if (line_end == line_start) {
+      break;
+    }
+
+    std::wstring line = headers.substr(line_start, line_end - line_start);
+    size_t separator = line.find(L':');
+    if (separator != std::wstring::npos) {
+      std::wstring value = line.substr(separator + 1);
+      const size_t first = value.find_first_not_of(L" \t");
+      value =
+          first == std::wstring::npos ? std::wstring() : value.substr(first);
+      SetResponseHeader(base::WideToUTF8(line.substr(0, separator)),
+                        base::WideToUTF8(value));
+    }
+
+    line_start = line_end + 2;
+  }
+}
 
 bool HTTPTransportWin::ExecuteSynchronously(std::string* response_body) {
   ResetResponse();
@@ -410,26 +461,7 @@ bool HTTPTransportWin::ExecuteSynchronously(std::string* response_body) {
   }
 
   SetResponseCode(static_cast<int>(status_code));
-
-  DWORD location_size = 0;
-  if (!WinHttpQueryHeaders(request.get(),
-                           WINHTTP_QUERY_LOCATION,
-                           WINHTTP_HEADER_NAME_BY_INDEX,
-                           WINHTTP_NO_OUTPUT_BUFFER,
-                           &location_size,
-                           WINHTTP_NO_HEADER_INDEX) &&
-      GetLastError() == ERROR_INSUFFICIENT_BUFFER) {
-    std::wstring location(location_size / sizeof(wchar_t), L'\0');
-    if (WinHttpQueryHeaders(request.get(),
-                            WINHTTP_QUERY_LOCATION,
-                            WINHTTP_HEADER_NAME_BY_INDEX,
-                            &location[0],
-                            &location_size,
-                            WINHTTP_NO_HEADER_INDEX)) {
-      location.resize(wcslen(location.c_str()));
-      SetResponseHeader("Location", base::WideToUTF8(location));
-    }
-  }
+  SetResponseHeaders(request.get());
 
   if (!IsExpectedResponseCode(static_cast<int>(status_code))) {
     LOG(ERROR) << base::StringPrintf("HTTP status %lu", status_code);

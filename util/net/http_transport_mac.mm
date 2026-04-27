@@ -211,6 +211,7 @@ class HTTPTransportMac final : public HTTPTransport {
   bool ExecuteSynchronously(std::string* response_body) override;
 
  private:
+  void SetResponseHeaders(NSHTTPURLResponse* response);
   bool ExecuteNormalRequest(NSMutableURLRequest* request,
                             std::string* response_body);
   bool ExecuteProxyRequest(NSMutableURLRequest* request,
@@ -221,6 +222,15 @@ class HTTPTransportMac final : public HTTPTransport {
 HTTPTransportMac::HTTPTransportMac() : HTTPTransport() {}
 
 HTTPTransportMac::~HTTPTransportMac() = default;
+
+void HTTPTransportMac::SetResponseHeaders(NSHTTPURLResponse* response) {
+  NSDictionary* headers = [response allHeaderFields];
+  for (NSString* name in headers) {
+    NSString* value = [headers objectForKey:name];
+    SetResponseHeader(base::SysNSStringToUTF8(name),
+                      base::SysNSStringToUTF8(value));
+  }
+}
 
 bool HTTPTransportMac::ExecuteNormalRequest(NSMutableURLRequest* request,
                                             std::string* response_body) {
@@ -254,11 +264,7 @@ bool HTTPTransportMac::ExecuteNormalRequest(NSMutableURLRequest* request,
     }
     NSInteger http_status = [http_response statusCode];
     SetResponseCode(implicit_cast<int>(http_status));
-    NSString* location =
-        [[http_response allHeaderFields] objectForKey:@"Location"];
-    if (location) {
-      SetResponseHeader("Location", [location UTF8String]);
-    }
+    SetResponseHeaders(http_response);
     if (!IsExpectedResponseCode(implicit_cast<int>(http_status))) {
       LOG(ERROR) << base::StringPrintf("HTTP status %ld",
                                        implicit_cast<long>(http_status));
@@ -340,11 +346,7 @@ bool HTTPTransportMac::ExecuteProxyRequest(NSMutableURLRequest* request,
             }
             NSInteger http_status = [http_response statusCode];
             SetResponseCode(implicit_cast<int>(http_status));
-            NSString* location =
-                [[http_response allHeaderFields] objectForKey:@"Location"];
-            if (location) {
-              SetResponseHeader("Location", [location UTF8String]);
-            }
+            SetResponseHeaders(http_response);
             if (!IsExpectedResponseCode(implicit_cast<int>(http_status))) {
               LOG(ERROR) << base::StringPrintf(
                   "HTTP status %ld", implicit_cast<long>(http_status));
