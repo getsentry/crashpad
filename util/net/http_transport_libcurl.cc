@@ -417,12 +417,16 @@ bool HTTPTransportLibcurl::ExecuteSynchronously(std::string* response_body) {
   // inform libcurl of the request body size. Otherwise, use Transfer-Encoding:
   // chunked, which does not require advance knowledge of the request body size.
   bool chunked = true;
+  bool has_content_type = false;
   size_t content_length;
   for (const auto& pair : headers()) {
-    if (pair.first == kContentLength) {
+    if (HTTPHeaderNameEquals(pair.first, kContentLength)) {
       chunked = !base::StringToSizeT(pair.second, &content_length);
       DCHECK(!chunked);
     } else {
+      if (HTTPHeaderNameEquals(pair.first, kContentType)) {
+        has_content_type = true;
+      }
       TRY_CURL_SLIST_APPEND(curl_headers,
                             (pair.first + ": " + pair.second).c_str());
     }
@@ -439,6 +443,13 @@ bool HTTPTransportLibcurl::ExecuteSynchronously(std::string* response_body) {
     // The drawback is that certain HTTP error statuses may not be received
     // until after substantial amounts of data have been sent to the server.
     TRY_CURL_SLIST_APPEND(curl_headers, "Expect:");
+
+    // CURLOPT_POST adds application/x-www-form-urlencoded when no Content-Type
+    // is provided. Some POST requests, such as TUS creation, intentionally send
+    // no Content-Type.
+    if (method() == "POST" && !has_content_type) {
+      TRY_CURL_SLIST_APPEND(curl_headers, "Content-Type:");
+    }
   }
 
   if (method() == "POST") {

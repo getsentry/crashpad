@@ -42,6 +42,7 @@
 #include "util/misc/metrics.h"
 #include "util/misc/uuid.h"
 #include "util/net/http_body.h"
+#include "util/net/http_headers.h"
 #include "util/net/http_multipart_builder.h"
 #include "util/net/http_transport.h"
 #include "util/net/url.h"
@@ -98,27 +99,9 @@ bool EndsWith(const std::string& string, const char* suffix) {
              0;
 }
 
-char LowerASCII(char c) {
-  return c >= 'A' && c <= 'Z' ? c + ('a' - 'A') : c;
-}
-
-bool EqualsCaseInsensitiveASCII(const std::string& lhs,
-                                const std::string& rhs) {
-  if (lhs.size() != rhs.size()) {
-    return false;
-  }
-
-  for (size_t i = 0; i < lhs.size(); ++i) {
-    if (LowerASCII(lhs[i]) != LowerASCII(rhs[i])) {
-      return false;
-    }
-  }
-  return true;
-}
-
 std::string HeaderValue(const HTTPHeaders& headers, const char* name) {
   for (const auto& header : headers) {
-    if (EqualsCaseInsensitiveASCII(header.first, name)) {
+    if (HTTPHeaderNameEquals(header.first, name)) {
       return header.second;
     }
   }
