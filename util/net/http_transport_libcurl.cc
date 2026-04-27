@@ -428,11 +428,9 @@ bool HTTPTransportLibcurl::ExecuteSynchronously(std::string* response_body) {
     }
   }
 
-  if (method() == "POST") {
-    TRY_CURL_EASY_SETOPT(curl.get(), CURLOPT_POST, 1l);
-
-    // By default when sending a POST request, libcurl includes an “Expect:
-    // 100-continue” header field. Althogh this header is specified in HTTP/1.1
+  if (method() != "GET") {
+    // By default when sending a request body, libcurl may include an “Expect:
+    // 100-continue” header field. Although this header is specified in HTTP/1.1
     // (RFC 2616 §8.2.3, RFC 7231 §5.1.1), even collection servers that claim to
     // speak HTTP/1.1 may not respond to it. When sending this header field,
     // libcurl will wait for one second for the server to respond with a “100
@@ -441,6 +439,10 @@ bool HTTPTransportLibcurl::ExecuteSynchronously(std::string* response_body) {
     // The drawback is that certain HTTP error statuses may not be received
     // until after substantial amounts of data have been sent to the server.
     TRY_CURL_SLIST_APPEND(curl_headers, "Expect:");
+  }
+
+  if (method() == "POST") {
+    TRY_CURL_EASY_SETOPT(curl.get(), CURLOPT_POST, 1l);
 
     if (chunked) {
       TRY_CURL_SLIST_APPEND(curl_headers, "Transfer-Encoding: chunked");
