@@ -612,7 +612,9 @@ CrashReportUploadThread::UploadResult CrashReportUploadThread::UploadReport(
           continue;
         }
 
-        return UploadResult::kRetry;
+        if (large_attachment_upload_available) {
+          return UploadResult::kRetry;
+        }
       }
     }
 
@@ -639,7 +641,7 @@ CrashReportUploadThread::UploadResult CrashReportUploadThread::UploadReport(
                                 &large_attachment_upload_available,
                                 &minidump_location)) {
         minidump_uploaded_separately = true;
-      } else {
+      } else if (large_attachment_upload_available) {
         return UploadResult::kRetry;
       }
     }
