@@ -56,12 +56,15 @@ class CrashReportExceptionHandler final
   //!     crash reports. For each crash report that is written, the data sources
   //!     are called in turn. These data sources may contribute additional
   //!     minidump streams. `nullptr` if not required.
+  //! \param[in] wait_for_upload If `true`, upload crash reports synchronously
+  //!     before returning from the exception handler.
   CrashReportExceptionHandler(
       CrashReportDatabase* database,
       CrashReportUploadThread* upload_thread,
       const std::map<std::string, std::string>* process_annotations,
       const std::vector<base::FilePath>* attachments,
       const UserStreamDataSources* user_stream_data_sources,
+      bool wait_for_upload,
       const base::FilePath* crash_reporter,
       const base::FilePath* crash_envelope,
       const UUID* report_id);
@@ -102,6 +105,7 @@ class CrashReportExceptionHandler final
   const std::map<std::string, std::string>* process_annotations_;  // weak
   const std::vector<base::FilePath>* attachments_;  // weak
   const UserStreamDataSources* user_stream_data_sources_;  // weak
+  bool wait_for_upload_;
   const base::FilePath* crash_reporter_;  // weak
   const base::FilePath* crash_envelope_;  // weak
   const UUID* report_id_;  // weak

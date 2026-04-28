@@ -50,6 +50,7 @@ CrashReportExceptionHandler::CrashReportExceptionHandler(
     const std::map<std::string, std::string>* process_annotations,
     const std::vector<base::FilePath>* attachments,
     const UserStreamDataSources* user_stream_data_sources,
+    bool wait_for_upload,
     const base::FilePath* crash_reporter,
     const base::FilePath* crash_envelope,
     const UUID* report_id)
@@ -58,6 +59,7 @@ CrashReportExceptionHandler::CrashReportExceptionHandler(
       process_annotations_(process_annotations),
       attachments_(attachments),
       user_stream_data_sources_(user_stream_data_sources),
+      wait_for_upload_(wait_for_upload),
       crash_reporter_(crash_reporter),
       crash_envelope_(crash_envelope),
       report_id_(report_id) {}
@@ -229,7 +231,11 @@ kern_return_t CrashReportExceptionHandler::CatchMachException(
     if (has_crash_reporter) {
       database_->DeleteReport(uuid);
     } else if (upload_thread_) {
-      upload_thread_->ReportPending(uuid);
+      if (wait_for_upload_) {
+        upload_thread_->ReportPendingSync(uuid);
+      } else {
+        upload_thread_->ReportPending(uuid);
+      }
     }
   }
 
