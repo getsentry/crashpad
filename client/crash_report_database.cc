@@ -195,6 +195,14 @@ bool ReadReaderToString(FileReaderInterface* reader, std::string* data) {
   return reader->SeekSet(current) && bytes_read == 0;
 }
 
+std::string AttachmentNameForPath(const base::FilePath& attachment) {
+#if BUILDFLAG(IS_WIN)
+  return base::WideToUTF8(attachment.BaseName().value());
+#else
+  return attachment.BaseName().value();
+#endif
+}
+
 }  // namespace
 
 CrashReportDatabase::Report::Report()
@@ -328,7 +336,6 @@ bool CrashReportDatabase::UploadReport::Initialize(const base::FilePath& path,
 }
 
 bool CrashReportDatabase::Envelope::Initialize(const base::FilePath& path) {
-  path_ = path;
   if (path.empty()) {
     return false;
   }
@@ -359,51 +366,61 @@ CrashReportDatabase::Envelope::Envelope(const UUID& uuid)
 
 void CrashReportDatabase::Envelope::AddAttachments(
     const std::vector<base::FilePath>& attachments) {
-  base::FilePath event;
-  std::vector<base::FilePath> breadcrumbs;
-  std::vector<base::FilePath> others;
+  std::vector<std::unique_ptr<FileReader>> readers;
+  std::vector<Attachment> named_attachments;
+  readers.reserve(attachments.size());
+  named_attachments.reserve(attachments.size());
 
   for (const auto& attachment : attachments) {
-#if BUILDFLAG(IS_WIN)
-    std::string basename = base::WideToUTF8(attachment.BaseName().value());
-#else
-    std::string basename = attachment.BaseName().value();
-#endif
-    if (basename == "__sentry-event") {
-      event = attachment;
-    } else if (basename.rfind("__sentry-breadcrumb", 0) == 0) {
-      breadcrumbs.push_back(attachment);
-    } else {
-      others.push_back(attachment);
+    auto reader = std::make_unique<FileReader>();
+    if (!reader->Open(attachment)) {
+      continue;
     }
+
+    named_attachments.push_back({AttachmentNameForPath(attachment),
+                                 reader.get()});
+    readers.push_back(std::move(reader));
   }
 
-  AddEvent(event, breadcrumbs);
-  for (const auto& attachment : others) {
-    AddAttachment(attachment);
-  }
+  AddAttachments(named_attachments);
 }
 
 void CrashReportDatabase::Envelope::AddAttachments(
     const std::map<std::string, FileReader*>& attachments) {
-  FileReader* event = nullptr;
-  std::vector<FileReader*> breadcrumbs;
-  std::vector<std::pair<std::string, FileReader*>> others;
+  std::vector<Attachment> named_attachments;
+  named_attachments.reserve(attachments.size());
 
   for (const auto& attachment : attachments) {
-    if (attachment.first == "__sentry-event") {
-      event = attachment.second;
-    } else if (attachment.first.rfind("__sentry-breadcrumb", 0) == 0) {
-      breadcrumbs.push_back(attachment.second);
+    named_attachments.push_back({attachment.first, attachment.second});
+  }
+
+  AddAttachments(named_attachments);
+}
+
+void CrashReportDatabase::Envelope::AddAttachments(
+    const std::vector<Attachment>& attachments) {
+  FileReaderInterface* event = nullptr;
+  std::vector<FileReaderInterface*> breadcrumbs;
+  std::vector<const Attachment*> others;
+
+  for (const auto& attachment : attachments) {
+    if (!attachment.reader) {
+      continue;
+    }
+
+    if (attachment.name == "__sentry-event") {
+      event = attachment.reader;
+    } else if (attachment.name.rfind("__sentry-breadcrumb", 0) == 0) {
+      breadcrumbs.push_back(attachment.reader);
     } else {
-      others.push_back(attachment);
+      others.push_back(&attachment);
     }
   }
 
   std::string event_data;
   if (ReadReaderToString(event, &event_data)) {
     std::vector<std::string> breadcrumb_datas;
-    for (FileReader* breadcrumb : breadcrumbs) {
+    for (FileReaderInterface* breadcrumb : breadcrumbs) {
       std::string breadcrumb_data;
       if (ReadReaderToString(breadcrumb, &breadcrumb_data)) {
         breadcrumb_datas.push_back(std::move(breadcrumb_data));
@@ -412,8 +429,8 @@ void CrashReportDatabase::Envelope::AddAttachments(
     AddEvent(event_data, breadcrumb_datas);
   }
 
-  for (const auto& attachment : others) {
-    AddAttachment(attachment.first, attachment.second);
+  for (const Attachment* attachment : others) {
+    AddAttachment(attachment->name, attachment->reader);
   }
 }
 
@@ -456,27 +473,8 @@ void CrashReportDatabase::Envelope::AddAttachmentRef(
 }
 
 void CrashReportDatabase::Envelope::AddEvent(
-    const base::FilePath& event,
-    const std::vector<base::FilePath>& breadcrumbs) {
-  std::string event_data;
-  if (!LoggingReadEntireFile(event, &event_data)) {
-    return;
-  }
-
-  std::vector<std::string> breadcrumb_datas;
-  for (const auto& breadcrumb : breadcrumbs) {
-    std::string breadcrumb_data;
-    if (LoggingReadEntireFile(breadcrumb, &breadcrumb_data)) {
-      breadcrumb_datas.push_back(std::move(breadcrumb_data));
-    }
-  }
-
-  AddEvent(event_data, breadcrumb_datas);
-}
-
-void CrashReportDatabase::Envelope::AddEvent(
     const std::string& event_data,
-    const std::vector<std::string>& breadcrumb_datas) {
+    const std::vector<std::string>& breadcrumbs_datas) {
   mpack_tree_t event_obj;
   mpack_tree_init_data(&event_obj, event_data.data(), event_data.size());
   mpack_tree_parse(&event_obj);
@@ -487,8 +485,8 @@ void CrashReportDatabase::Envelope::AddEvent(
   size_t max_breadcrumbs = 0;
   std::vector<std::unique_ptr<mpack_tree_t, mpack_error_t (*)(mpack_tree_t*)>>
       all_breadcrumbs;
-  for (size_t i = 0; i < breadcrumb_datas.size(); ++i) {
-    const auto& breadcrumb_data = breadcrumb_datas[i];
+  for (size_t i = 0; i < breadcrumbs_datas.size(); ++i) {
+    const auto& breadcrumb_data = breadcrumbs_datas[i];
     size_t count = 0;
     size_t offset = 0;
     while (offset < breadcrumb_data.size()) {
@@ -540,32 +538,6 @@ void CrashReportDatabase::Envelope::AddEvent(
       "{\"type\":\"event\","
       "\"length\":%zu}",
       payload.size());
-  writer_->Write("\n", 1);
-  writer_->Write(header.data(), header.size());
-  writer_->Write("\n", 1);
-  writer_->Write(payload.data(), payload.size());
-}
-
-void CrashReportDatabase::Envelope::AddAttachment(
-    const base::FilePath& attachment) {
-  std::string payload;
-  if (!LoggingReadEntireFile(attachment, &payload)) {
-    return;
-  }
-
-#if BUILDFLAG(IS_WIN)
-  std::string basename = base::WideToUTF8(attachment.BaseName().value());
-#else
-  std::string basename = attachment.BaseName().value();
-#endif
-
-  std::string header = base::StringPrintf(
-      "{\"type\":\"attachment\","
-      "\"length\":%zu,"
-      "\"attachment_type\":\"event.attachment\","
-      "\"filename\": \"%s\"}",
-      payload.size(),
-      EscapeJsonString(basename).c_str());
   writer_->Write("\n", 1);
   writer_->Write(header.data(), header.size());
   writer_->Write("\n", 1);

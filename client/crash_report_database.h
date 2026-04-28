@@ -247,11 +247,14 @@ class CrashReportDatabase {
     void Finish();
 
    private:
-    void AddEvent(const base::FilePath& event,
-                  const std::vector<base::FilePath>& breadcrumbs);
+    struct Attachment {
+      std::string name;
+      FileReaderInterface* reader;
+    };
+
+    void AddAttachments(const std::vector<Attachment>& attachments);
     void AddEvent(const std::string& event_data,
-                  const std::vector<std::string>& breadcrumb_datas);
-    void AddAttachment(const base::FilePath& attachment);
+                  const std::vector<std::string>& breadcrumbs_datas);
     void AddAttachment(const std::string& filename,
                        FileReaderInterface* reader);
     void AddAttachmentRef(const std::string& filename,
@@ -261,7 +264,6 @@ class CrashReportDatabase {
                           uint64_t size);
 
     UUID uuid_;
-    base::FilePath path_;
     std::unique_ptr<FileWriter> file_writer_;
     FileWriterInterface* writer_;
   };
