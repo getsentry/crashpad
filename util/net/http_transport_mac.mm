@@ -210,6 +210,17 @@ NSTimeInterval RequestIdleTimeoutInterval(double connect_timeout,
   return connect_timeout;
 }
 
+void AssignResponseBody(NSData* body, std::string* response_body) {
+  if (!response_body) {
+    return;
+  }
+  response_body->clear();
+  if ([body length] > 0) {
+    response_body->assign(static_cast<const char*>([body bytes]),
+                          [body length]);
+  }
+}
+
 class HTTPTransportMac final : public HTTPTransport {
  public:
   HTTPTransportMac();
@@ -276,15 +287,11 @@ bool HTTPTransportMac::ExecuteNormalRequest(NSMutableURLRequest* request,
     NSInteger http_status = [http_response statusCode];
     SetResponseCode(implicit_cast<int>(http_status));
     SetResponseHeaders(http_response);
+    AssignResponseBody(body, response_body);
     if (!IsExpectedResponseCode(implicit_cast<int>(http_status))) {
       LOG(ERROR) << base::StringPrintf("HTTP status %ld",
                                        implicit_cast<long>(http_status));
       return false;
-    }
-
-    if (response_body) {
-      response_body->assign(static_cast<const char*>([body bytes]),
-                            [body length]);
     }
 
     return true;
@@ -358,6 +365,7 @@ bool HTTPTransportMac::ExecuteProxyRequest(NSMutableURLRequest* request,
             NSInteger http_status = [http_response statusCode];
             SetResponseCode(implicit_cast<int>(http_status));
             SetResponseHeaders(http_response);
+            AssignResponseBody(body, response_body);
             if (!IsExpectedResponseCode(implicit_cast<int>(http_status))) {
               LOG(ERROR) << base::StringPrintf(
                   "HTTP status %ld", implicit_cast<long>(http_status));
@@ -366,10 +374,6 @@ bool HTTPTransportMac::ExecuteProxyRequest(NSMutableURLRequest* request,
               return;
             }
 
-            if (response_body) {
-              response_body->assign(static_cast<const char*>([body bytes]),
-                                    [body length]);
-            }
             sync_rv = true;
             dispatch_semaphore_signal(semaphore);
           }];
@@ -414,14 +418,20 @@ bool HTTPTransportMac::ExecuteSynchronously(std::string* response_body) {
     // Info.plist-derived strings.
     [request setValue:UserAgentString() forHTTPHeaderField:@"User-Agent"];
 
+    bool has_empty_body = false;
     for (const auto& pair : headers()) {
+      if (HTTPHeaderNameEquals(pair.first, kContentLength)) {
+        has_empty_body = pair.second == "0";
+      }
       [request setValue:base::SysUTF8ToNSString(pair.second)
           forHTTPHeaderField:base::SysUTF8ToNSString(pair.first)];
     }
 
-    NSInputStream* input_stream = [[CrashpadHTTPBodyStreamTransport alloc]
-        initWithBodyStream:body_stream()];
-    [request setHTTPBodyStream:input_stream];
+    if (!has_empty_body) {
+      NSInputStream* input_stream = [[CrashpadHTTPBodyStreamTransport alloc]
+          initWithBodyStream:body_stream()];
+      [request setHTTPBodyStream:input_stream];
+    }
 
     if (http_proxy().empty()) {
       return ExecuteNormalRequest(request, response_body);
