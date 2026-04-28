@@ -515,6 +515,11 @@ bool ReadContentChunked(Stream* stream, std::string* body) {
   return false;
 }
 
+bool ResponseHasBody(int http_status) {
+  return (http_status < 100 || http_status >= 200) && http_status != 204 &&
+         http_status != 205 && http_status != 304;
+}
+
 bool ReadResponse(Stream* stream,
                   std::string* response_body,
                   int* http_status,
@@ -535,18 +540,19 @@ bool ReadResponse(Stream* stream,
   }
   *response_headers = headers;
 
+  if (!ResponseHasBody(*http_status)) {
+    return true;
+  }
+
   auto it = headers.find("Content-Length");
-  size_t len = 0;
   if (it != headers.end()) {
+    size_t len = 0;
     if (!base::StringToSizeT(it->second, &len)) {
       LOG(ERROR) << "invalid Content-Length";
       return false;
     }
-  }
-
-  if (len) {
     response_body->resize(len, 0);
-    return stream->LoggingRead(&(*response_body)[0], len);
+    return len == 0 || stream->LoggingRead(&(*response_body)[0], len);
   }
 
   it = headers.find("Transfer-Encoding");
