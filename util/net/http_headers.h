@@ -15,10 +15,9 @@
 #ifndef CRASHPAD_UTIL_NET_HTTP_HEADERS_H_
 #define CRASHPAD_UTIL_NET_HTTP_HEADERS_H_
 
-#include <string.h>
-
 #include <map>
 #include <string>
+#include <string_view>
 
 namespace crashpad {
 
@@ -37,8 +36,8 @@ constexpr char kContentEncoding[] = "Content-Encoding";
 //! \brief Compares HTTP header names as ASCII strings.
 //!
 //! HTTP header names are case-insensitive.
-inline bool HTTPHeaderNameEquals(const std::string& lhs, const char* rhs) {
-  if (lhs.size() != strlen(rhs)) {
+inline bool HTTPHeaderNameEquals(std::string_view lhs, std::string_view rhs) {
+  if (lhs.size() != rhs.size()) {
     return false;
   }
 
