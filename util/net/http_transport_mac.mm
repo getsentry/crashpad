@@ -17,8 +17,6 @@
 #import <Foundation/Foundation.h>
 #include <sys/utsname.h>
 
-#include <limits>
-
 #include "base/apple/bridging.h"
 #include "base/apple/foundation_util.h"
 #include "base/strings/stringprintf.h"
@@ -201,12 +199,15 @@ NSString* UserAgentString() {
   return user_agent;
 }
 
-NSTimeInterval RequestTimeoutInterval(double transfer_timeout) {
+NSTimeInterval RequestIdleTimeoutInterval(double connect_timeout,
+                                          double transfer_timeout) {
   if (transfer_timeout > 0) {
     return transfer_timeout;
   }
-  // NSURLRequest has no disabled timeout sentinel.
-  return std::numeric_limits<NSTimeInterval>::max();
+  // NSURLRequest exposes one idle timeout, not separate connect and transfer
+  // timeouts. Keep the configured idle guard when callers disable the transfer
+  // timeout for backends that support that distinction.
+  return connect_timeout;
 }
 
 class HTTPTransportMac final : public HTTPTransport {
@@ -401,7 +402,8 @@ bool HTTPTransportMac::ExecuteSynchronously(std::string* response_body) {
     NSMutableURLRequest* request =
         [NSMutableURLRequest requestWithURL:url
                                 cachePolicy:NSURLRequestUseProtocolCachePolicy
-                            timeoutInterval:RequestTimeoutInterval(
+                            timeoutInterval:RequestIdleTimeoutInterval(
+                                                connect_timeout(),
                                                 transfer_timeout())];
     [request setHTTPMethod:base::SysUTF8ToNSString(method())];
 
