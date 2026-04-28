@@ -175,7 +175,7 @@ std::unique_ptr<HTTPBodyStream> HTTPMultipartBuilder::GetBodyStream() {
     header += base::StringPrintf("Content-Type: %s%s",
         attachment.content_type.c_str(), kBoundaryCRLF);
 #else
-    header += base::StringPrintf("; filename=\"%s\"%s",
+     header += base::StringPrintf("; filename=\"%s\"%s",
         attachment.filename.c_str(), kBoundaryCRLF);
 #endif
 
