@@ -487,6 +487,8 @@ bool HTTPTransportLibcurl::ExecuteSynchronously(std::string* response_body) {
   }
 
   if (!HandleHTTPStatus(static_cast<unsigned long>(status))) {
+    LOG(ERROR) << base::StringPrintf("HTTP response = \"%s\"",
+                                     response_body->c_str());
     return false;
   }
 
