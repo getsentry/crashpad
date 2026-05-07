@@ -19,7 +19,6 @@
 
 #include "base/apple/bridging.h"
 #include "base/apple/foundation_util.h"
-#include "base/strings/stringprintf.h"
 #include "base/strings/sys_string_conversions.h"
 #include "build/build_config.h"
 #include "package.h"
@@ -252,10 +251,8 @@ bool HTTPTransportMac::ExecuteNormalRequest(NSMutableURLRequest* request,
       LOG(ERROR) << "no http_response";
       return false;
     }
-    NSInteger http_status = [http_response statusCode];
-    if (http_status < 200 || http_status > 203) {
-      LOG(ERROR) << base::StringPrintf("HTTP status %ld",
-                                       implicit_cast<long>(http_status));
+    NSInteger status_code = [http_response statusCode];
+    if (!HandleHTTPStatus(static_cast<unsigned long>(status_code))) {
       return false;
     }
 
@@ -332,10 +329,8 @@ bool HTTPTransportMac::ExecuteProxyRequest(NSMutableURLRequest* request,
               dispatch_semaphore_signal(semaphore);
               return;
             }
-            NSInteger http_status = [http_response statusCode];
-            if (http_status < 200 || http_status > 203) {
-              LOG(ERROR) << base::StringPrintf(
-                  "HTTP status %ld", implicit_cast<long>(http_status));
+            NSInteger status_code = [http_response statusCode];
+            if (!HandleHTTPStatus(static_cast<unsigned long>(status_code))) {
               sync_rv = false;
               dispatch_semaphore_signal(semaphore);
               return;
