@@ -22,6 +22,14 @@
 
 namespace crashpad {
 
+std::string ClientToServerMessage::Payload() const {
+  const char* payload_data = static_cast<const char*>(payload.address);
+  if (!payload_data || payload.size == 0) {
+    return std::string();
+  }
+  return std::string(payload_data, static_cast<size_t>(payload.size - 1));
+}
+
 bool SendClientToServerMessage(mach_port_t port,
                                ClientToServerMessage::Type type,
                                const std::string& payload) {

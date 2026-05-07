@@ -57,6 +57,12 @@ class ClientToServerMessageServer : public MachMessageServer::Interface {
       case ClientToServerMessage::kRequestRetry:
         delegate_->RequestRetry();
         break;
+      case ClientToServerMessage::kAddAttachment:
+        delegate_->AddAttachment(base::FilePath(message->Payload()));
+        break;
+      case ClientToServerMessage::kRemoveAttachment:
+        delegate_->RemoveAttachment(base::FilePath(message->Payload()));
+        break;
     }
     return true;
   }

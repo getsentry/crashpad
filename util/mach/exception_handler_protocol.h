@@ -41,6 +41,14 @@ struct ClientToServerMessage {
     //! \brief Ask the handler to retry pending report uploads. Carries no
     //!     meaningful payload.
     kRequestRetry = 1,
+
+    //! \brief Add a file to the list of files attached to crash reports. The
+    //!     payload contains the attachment path.
+    kAddAttachment = 2,
+
+    //! \brief Remove a file from the list of files attached to crash reports.
+    //!     The payload contains the attachment path.
+    kRemoveAttachment = 3,
   };
 
   mach_msg_header_t header;
@@ -48,6 +56,9 @@ struct ClientToServerMessage {
   mach_msg_ool_descriptor_t payload;
   NDR_record_t ndr;
   Type type;
+
+  //! \brief Returns the optional string payload.
+  std::string Payload() const;
 };
 
 //! \brief Sends a ClientToServerMessage to the handler.

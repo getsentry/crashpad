@@ -858,7 +858,7 @@ class CrashpadClient {
   static void SetCrashLoopBefore(uint64_t crash_loop_before_time);
 #endif
 
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_LINUX) || DOXYGEN
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || DOXYGEN
   //! \brief Adds a file to the list of files to be attached to the crash
   //!     report.
   //!

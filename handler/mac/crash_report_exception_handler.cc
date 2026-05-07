@@ -14,6 +14,7 @@
 
 #include "handler/mac/crash_report_exception_handler.h"
 
+#include <algorithm>
 #include <utility>
 #include <vector>
 
@@ -57,12 +58,16 @@ CrashReportExceptionHandler::CrashReportExceptionHandler(
     : database_(database),
       upload_thread_(upload_thread),
       process_annotations_(process_annotations),
-      attachments_(attachments),
+      attachments_(),
       user_stream_data_sources_(user_stream_data_sources),
       wait_for_upload_(wait_for_upload),
       crash_reporter_(crash_reporter),
       crash_envelope_(crash_envelope),
-      report_id_(report_id) {}
+      report_id_(report_id) {
+  if (attachments) {
+    attachments_ = *attachments;
+  }
+}
 
 CrashReportExceptionHandler::~CrashReportExceptionHandler() {
 }
@@ -186,7 +191,7 @@ kern_return_t CrashReportExceptionHandler::CatchMachException(
       return KERN_FAILURE;
     }
 
-    for (const auto& attachment : (*attachments_)) {
+    for (const auto& attachment : attachments_) {
       FileReader file_reader;
       if (!file_reader.Open(attachment)) {
         LOG(ERROR) << "attachment " << attachment.value().c_str()
@@ -210,7 +215,7 @@ kern_return_t CrashReportExceptionHandler::CatchMachException(
     if (has_crash_reporter) {
       CrashReportDatabase::Envelope envelope(new_report->ReportID());
       if (envelope.Initialize(*crash_envelope_)) {
-        envelope.AddAttachments(*attachments_);
+        envelope.AddAttachments(attachments_);
         if (auto reader = new_report->Reader()) {
           envelope.AddMinidump(reader);
         }
@@ -318,6 +323,28 @@ void CrashReportExceptionHandler::RequestRetry() {
   if (upload_thread_) {
     upload_thread_->RetryPending();
   }
+}
+
+void CrashReportExceptionHandler::AddAttachment(
+    const base::FilePath& attachment) {
+  auto it = std::find(attachments_.begin(), attachments_.end(), attachment);
+  if (it != attachments_.end()) {
+    LOG(WARNING) << "ignoring duplicate attachment " << attachment;
+    return;
+  }
+
+  attachments_.push_back(attachment);
+}
+
+void CrashReportExceptionHandler::RemoveAttachment(
+    const base::FilePath& attachment) {
+  auto it = std::find(attachments_.begin(), attachments_.end(), attachment);
+  if (it == attachments_.end()) {
+    LOG(WARNING) << "ignoring non-existent attachment " << attachment;
+    return;
+  }
+
+  attachments_.erase(it);
 }
 
 }  // namespace crashpad

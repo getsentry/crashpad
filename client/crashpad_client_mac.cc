@@ -629,6 +629,18 @@ void CrashpadClient::RequestRetry() {
                             ClientToServerMessage::kRequestRetry);
 }
 
+void CrashpadClient::AddAttachment(const base::FilePath& attachment) {
+  SendClientToServerMessage(exception_port_.get(),
+                            ClientToServerMessage::kAddAttachment,
+                            attachment.value());
+}
+
+void CrashpadClient::RemoveAttachment(const base::FilePath& attachment) {
+  SendClientToServerMessage(exception_port_.get(),
+                            ClientToServerMessage::kRemoveAttachment,
+                            attachment.value());
+}
+
 // static
 void CrashpadClient::UseSystemDefaultHandler() {
   base::apple::ScopedMachSendRight system_crash_reporter_handler(

@@ -19,6 +19,7 @@
 
 #include <map>
 #include <string>
+#include <vector>
 
 #include "client/crash_report_database.h"
 #include "handler/crash_report_upload_thread.h"
@@ -97,13 +98,14 @@ class CrashReportExceptionHandler final
 
   // ExceptionHandlerServer::Delegate:
   void RequestRetry() override;
+  void AddAttachment(const base::FilePath& attachment) override;
+  void RemoveAttachment(const base::FilePath& attachment) override;
 
  private:
-
   CrashReportDatabase* database_;  // weak
   CrashReportUploadThread* upload_thread_;  // weak
   const std::map<std::string, std::string>* process_annotations_;  // weak
-  const std::vector<base::FilePath>* attachments_;  // weak
+  std::vector<base::FilePath> attachments_;
   const UserStreamDataSources* user_stream_data_sources_;  // weak
   bool wait_for_upload_;
   const base::FilePath* crash_reporter_;  // weak

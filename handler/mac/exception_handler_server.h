@@ -18,6 +18,7 @@
 #include <mach/mach.h>
 
 #include "base/apple/scoped_mach_port.h"
+#include "base/files/file_path.h"
 #include "util/mach/exc_server_variants.h"
 
 namespace crashpad {
@@ -35,6 +36,14 @@ class ExceptionHandlerServer {
     //! \brief Called when the server has received a request to retry pending
     //!     report uploads.
     virtual void RequestRetry() = 0;
+
+    //! \brief Called when the server has received a request to add a file to
+    //!     the list of files attached to crash reports.
+    virtual void AddAttachment(const base::FilePath& attachment) = 0;
+
+    //! \brief Called when the server has received a request to remove a file
+    //!     from the list of files attached to crash reports.
+    virtual void RemoveAttachment(const base::FilePath& attachment) = 0;
   };
 
   //! \brief Constructs an ExceptionHandlerServer object.
