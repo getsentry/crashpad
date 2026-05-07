@@ -22,7 +22,6 @@
 #include "base/strings/sys_string_conversions.h"
 #include "build/build_config.h"
 #include "package.h"
-#include "util/misc/implicit_cast.h"
 #include "util/misc/metrics.h"
 #include "util/net/http_body.h"
 #include "util/net/url.h"
