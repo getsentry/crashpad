@@ -85,6 +85,10 @@ class CrashReportExceptionHandler final
       WinVMAddress debug_critical_section_address) override;
   void ExceptionHandlerServerAttachmentAdded(
       const base::FilePath& attachment) override;
+  void ExceptionHandlerServerAttachmentWritten(
+      const base::FilePath& attachment, const std::string& data) override;
+  void ExceptionHandlerServerAttachmentAppended(
+      const base::FilePath& attachment, const std::string& data) override;
   void ExceptionHandlerServerAttachmentRemoved(
       const base::FilePath& attachment) override;
   void ExceptionHandlerServerRetryRequested() override;

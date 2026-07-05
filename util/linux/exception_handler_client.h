@@ -18,6 +18,8 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 
+#include <string>
+
 #include "util/linux/exception_handler_protocol.h"
 
 namespace crashpad {
@@ -70,6 +72,14 @@ class ExceptionHandlerClient {
 
   //! \brief Adds an attachment to the crash report.
   void AddAttachment(const base::FilePath& attachment);
+
+  //! \brief Requests that the handler write an attachment's contents.
+  bool WriteAttachment(
+      const base::FilePath& attachment, const std::string& data);
+
+  //! \brief Requests that the handler append to an attachment's contents.
+  bool AppendAttachment(
+      const base::FilePath& attachment, const std::string& data);
 
   //! \brief Removes an attachment from the crash report.
   void RemoveAttachment(const base::FilePath& attachment);

@@ -64,6 +64,19 @@ class ExceptionHandlerProtocol {
     char path[PATH_MAX];
   };
 
+  static constexpr uint32_t kMaxAttachmentWritePayloadSize = 192 * 1024;
+
+  enum AttachmentWriteOperation : uint32_t {
+    kAttachmentWriteReplace,
+    kAttachmentWriteAppend,
+  };
+
+  struct AttachmentWriteInformation {
+    uint32_t path_size;
+    uint32_t payload_size;
+    uint32_t operation;
+  };
+
   //! \brief The signal used to indicate a crash dump is complete.
   //!
   //! When multiple clients share a single socket connection with the handler,
@@ -96,6 +109,9 @@ class ExceptionHandlerProtocol {
 
       //! \brief Request that the server retry pending report uploads.
       kTypeRequestRetry,
+
+      //! \brief Request that the server write an attachment's contents.
+      kTypeWriteAttachment,
     };
 
     Type type;
@@ -109,6 +125,9 @@ class ExceptionHandlerProtocol {
 
       //! \brief Valid for type == kAddAttachment || type == kRemoveAttachment
       AttachmentInformation attachment_info;
+
+      //! \brief Valid for type == kTypeWriteAttachment.
+      AttachmentWriteInformation attachment_write_info;
     };
   };
 

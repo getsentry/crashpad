@@ -141,30 +141,12 @@ bool SendToCrashHandlerServer(const std::wstring& pipe_name,
   }
 }
 
-bool SendAttachmentToCrashHandlerServer(
+bool SendPayloadToCrashHandlerServer(
     const std::wstring& pipe_name,
-    ClientToServerMessage::Type message_type,
-    const std::wstring& path,
+    const ClientToServerMessage& message,
+    const void* payload,
+    uint32_t payload_size,
     ServerToClientMessage* response) {
-  if (message_type != ClientToServerMessage::kAddAttachmentV2 &&
-      message_type != ClientToServerMessage::kRemoveAttachmentV2) {
-    LOG(ERROR) << "Invalid message type for attachment: " << message_type;
-    return false;
-  }
-
-  const size_t path_length_bytes = (path.length() + 1) * sizeof(wchar_t);
-
-  if (path_length_bytes > kMaxPathBytes) {
-    LOG(ERROR) << "Path too long: " << path_length_bytes << " bytes";
-    return false;
-  }
-
-  // Build the message header.
-  ClientToServerMessage message = {};
-  message.type = message_type;
-  message.attachment_v2.path_length_bytes =
-      static_cast<uint32_t>(path_length_bytes);
-
   // Retry CreateFile() in a loop (follows the logic in
   // SendToCrashHandlerServer).
   for (;;) {
@@ -201,9 +183,9 @@ bool SendAttachmentToCrashHandlerServer(
       return false;
     }
 
-    if (!WriteFile(
-            pipe.get(), path.c_str(), static_cast<DWORD>(path_length_bytes))) {
-      PLOG(ERROR) << "WriteFile (path)";
+    if (payload_size > 0 &&
+        !WriteFile(pipe.get(), payload, static_cast<DWORD>(payload_size))) {
+      PLOG(ERROR) << "WriteFile (payload)";
       return false;
     }
 

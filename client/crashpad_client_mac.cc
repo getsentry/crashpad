@@ -637,6 +637,30 @@ void CrashpadClient::AddAttachment(const base::FilePath& attachment) {
                             attachment.value());
 }
 
+bool CrashpadClient::WriteAttachment(const base::FilePath& attachment,
+                                     const std::string& data) {
+  std::string payload;
+  payload.push_back('\0');
+  payload.append(attachment.value());
+  payload.push_back('\0');
+  payload.append(data);
+  return SendClientToServerMessage(exception_port_.get(),
+                                   ClientToServerMessage::kWriteAttachment,
+                                   payload);
+}
+
+bool CrashpadClient::AppendAttachment(const base::FilePath& attachment,
+                                      const std::string& data) {
+  std::string payload;
+  payload.push_back('\1');
+  payload.append(attachment.value());
+  payload.push_back('\0');
+  payload.append(data);
+  return SendClientToServerMessage(exception_port_.get(),
+                                   ClientToServerMessage::kWriteAttachment,
+                                   payload);
+}
+
 void CrashpadClient::RemoveAttachment(const base::FilePath& attachment) {
   SendClientToServerMessage(exception_port_.get(),
                             ClientToServerMessage::kRemoveAttachment,

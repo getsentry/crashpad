@@ -99,6 +99,10 @@ class CrashReportExceptionHandler : public ExceptionHandlerServer::Delegate {
       UUID* local_report_id = nullptr) override;
 
   void AddAttachment(const base::FilePath& attachment) override;
+  void WriteAttachment(
+      const base::FilePath& attachment, const std::string& data) override;
+  void AppendAttachment(
+      const base::FilePath& attachment, const std::string& data) override;
   void RemoveAttachment(const base::FilePath& attachment) override;
   void RequestRetry() override;
 

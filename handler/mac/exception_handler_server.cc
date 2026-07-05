@@ -65,6 +65,29 @@ class ClientToServerMessageServer : public MachMessageServer::Interface {
       case ClientToServerMessage::kAddAttachment:
         delegate_->AddAttachment(base::FilePath(message->Payload()));
         break;
+      case ClientToServerMessage::kWriteAttachment: {
+        std::string payload = message->Payload();
+        if (payload.empty()) {
+          LOG(ERROR) << "malformed attachment write message";
+          break;
+        }
+        bool should_append = payload[0] != '\0';
+        size_t path_end = payload.find('\0', 1);
+        if (path_end == std::string::npos) {
+          LOG(ERROR) << "malformed attachment write message";
+          break;
+        }
+        if (should_append) {
+          delegate_->AppendAttachment(
+              base::FilePath(payload.substr(1, path_end - 1)),
+              payload.substr(path_end + 1));
+        } else {
+          delegate_->WriteAttachment(
+              base::FilePath(payload.substr(1, path_end - 1)),
+              payload.substr(path_end + 1));
+        }
+        break;
+      }
       case ClientToServerMessage::kRemoveAttachment:
         delegate_->RemoveAttachment(base::FilePath(message->Payload()));
         break;

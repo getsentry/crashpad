@@ -207,6 +207,31 @@ void CrashReportExceptionHandler::ExceptionHandlerServerAttachmentAdded(
   attachments_.push_back(attachment);
 }
 
+void CrashReportExceptionHandler::ExceptionHandlerServerAttachmentWritten(
+    const base::FilePath& attachment, const std::string& data) {
+  FileWriter writer;
+  if (!writer.Open(attachment,
+                   FileWriteMode::kTruncateOrCreate,
+                   FilePermissions::kOwnerOnly) ||
+      !writer.Write(data.data(), data.size())) {
+    LOG(ERROR) << "failed to write attachment " << attachment;
+    return;
+  }
+}
+
+void CrashReportExceptionHandler::ExceptionHandlerServerAttachmentAppended(
+    const base::FilePath& attachment, const std::string& data) {
+  FileWriter writer;
+  if (!writer.Open(attachment,
+                   FileWriteMode::kReuseOrCreate,
+                   FilePermissions::kOwnerOnly) ||
+      writer.Seek(0, SEEK_END) < 0 ||
+      !writer.Write(data.data(), data.size())) {
+    LOG(ERROR) << "failed to write attachment " << attachment;
+    return;
+  }
+}
+
 void CrashReportExceptionHandler::ExceptionHandlerServerAttachmentRemoved(
     const base::FilePath& attachment) {
   auto it = std::find(attachments_.begin(), attachments_.end(), attachment);

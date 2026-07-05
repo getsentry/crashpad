@@ -528,6 +528,59 @@ static void HandleRemoveAttachmentV2(
   LoggingWriteFile(service_context.pipe(), &response, sizeof(response));
 }
 
+static void HandleWriteAttachment(
+    const internal::PipeServiceContext& service_context,
+    const ClientToServerMessage& message) {
+  const uint32_t path_length_bytes =
+      message.attachment_write.path_length_bytes;
+  const uint32_t payload_length_bytes =
+      message.attachment_write.payload_length_bytes;
+  const auto operation =
+      static_cast<AttachmentWriteOperation>(message.attachment_write.operation);
+
+  if (path_length_bytes == 0 || path_length_bytes > kMaxPathBytes ||
+      path_length_bytes % sizeof(wchar_t) != 0) {
+    LOG(ERROR) << "Invalid path length: " << path_length_bytes;
+    return;
+  }
+  if (payload_length_bytes > UINT32_MAX - path_length_bytes) {
+    LOG(ERROR) << "Invalid attachment write length";
+    return;
+  }
+
+  const uint32_t request_payload_length_bytes =
+      path_length_bytes + payload_length_bytes;
+  std::string request_payload(request_payload_length_bytes, '\0');
+  if (!LoggingReadFileExactly(
+          service_context.pipe(),
+          &request_payload[0],
+          request_payload_length_bytes)) {
+    LOG(ERROR) << "Failed to read attachment write";
+    return;
+  }
+
+  const size_t path_length = path_length_bytes / sizeof(wchar_t) - 1;
+  std::wstring path(path_length, L'\0');
+  if (path_length > 0) {
+    memcpy(&path[0],
+           request_payload.data(),
+           path_length_bytes - sizeof(wchar_t));
+  }
+
+  std::string payload(
+      request_payload.data() + path_length_bytes, payload_length_bytes);
+
+  ServerToClientMessage response = {};
+  if (operation == kAttachmentWriteAppend) {
+    service_context.delegate()->ExceptionHandlerServerAttachmentAppended(
+        base::FilePath(path), payload);
+  } else {
+    service_context.delegate()->ExceptionHandlerServerAttachmentWritten(
+        base::FilePath(path), payload);
+  }
+  LoggingWriteFile(service_context.pipe(), &response, sizeof(response));
+}
+
 // This function must be called with service_context.pipe() already connected to
 // a client pipe. It exchanges data with the client and adds a ClientData record
 // to service_context->clients().
@@ -608,6 +661,11 @@ bool ExceptionHandlerServer::ServiceClientConnection(
         return false;
       }
       HandleRemoveAttachmentV2(service_context, message);
+      return false;
+    }
+
+    case ClientToServerMessage::kWriteAttachment: {
+      HandleWriteAttachment(service_context, message);
       return false;
     }
 

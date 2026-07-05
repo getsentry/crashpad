@@ -18,6 +18,8 @@
 #include <mach/mach.h>
 #include <sys/types.h>
 
+#include <string>
+
 #include "base/apple/scoped_mach_port.h"
 #include "base/files/file_path.h"
 #include "util/mach/exc_server_variants.h"
@@ -41,6 +43,16 @@ class ExceptionHandlerServer {
     //! \brief Called when the server has received a request to add a file to
     //!     the list of files attached to crash reports.
     virtual void AddAttachment(const base::FilePath& attachment) = 0;
+
+    //! \brief Called when the server has received a request to write an
+    //!     attachment's contents.
+    virtual void WriteAttachment(
+        const base::FilePath& attachment, const std::string& data) = 0;
+
+    //! \brief Called when the server has received a request to append to an
+    //!     attachment's contents.
+    virtual void AppendAttachment(
+        const base::FilePath& attachment, const std::string& data) = 0;
 
     //! \brief Called when the server has received a request to remove a file
     //!     from the list of files attached to crash reports.

@@ -440,6 +440,18 @@ class RequestCrashDumpHandler : public SignalHandler {
     client.AddAttachment(attachment);
   }
 
+  bool WriteAttachment(const base::FilePath& attachment,
+                       const std::string& data) {
+    ExceptionHandlerClient client(sock_to_handler_.get(), true);
+    return client.WriteAttachment(attachment, data);
+  }
+
+  bool AppendAttachment(const base::FilePath& attachment,
+                        const std::string& data) {
+    ExceptionHandlerClient client(sock_to_handler_.get(), true);
+    return client.AppendAttachment(attachment, data);
+  }
+
   void RemoveAttachment(const base::FilePath& attachment) {
     ExceptionHandlerClient client(sock_to_handler_.get(), true);
     client.RemoveAttachment(attachment);
@@ -830,6 +842,18 @@ void CrashpadClient::SetCrashLoopBefore(uint64_t crash_loop_before_time) {
 void CrashpadClient::AddAttachment(const base::FilePath& attachment) {
   auto signal_handler = RequestCrashDumpHandler::Get();
   signal_handler->AddAttachment(attachment);
+}
+
+bool CrashpadClient::WriteAttachment(const base::FilePath& attachment,
+                                     const std::string& data) {
+  auto signal_handler = RequestCrashDumpHandler::Get();
+  return signal_handler->WriteAttachment(attachment, data);
+}
+
+bool CrashpadClient::AppendAttachment(const base::FilePath& attachment,
+                                      const std::string& data) {
+  auto signal_handler = RequestCrashDumpHandler::Get();
+  return signal_handler->AppendAttachment(attachment, data);
 }
 
 void CrashpadClient::RemoveAttachment(const base::FilePath& attachment) {
