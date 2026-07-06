@@ -49,10 +49,6 @@ struct ClientToServerMessage {
     //! \brief Remove a file from the list of files attached to crash reports.
     //!     The payload contains the attachment path.
     kRemoveAttachment = 3,
-
-    //! \brief Write an attachment's contents. The payload contains a
-    //!     null-terminated attachment path followed by the attachment content.
-    kWriteAttachment = 4,
   };
 
   mach_msg_header_t header;

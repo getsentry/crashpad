@@ -99,10 +99,6 @@ class CrashReportExceptionHandler final
   // ExceptionHandlerServer::Delegate:
   void RequestRetry() override;
   void AddAttachment(const base::FilePath& attachment) override;
-  void WriteAttachment(
-      const base::FilePath& attachment, const std::string& data) override;
-  void AppendAttachment(
-      const base::FilePath& attachment, const std::string& data) override;
   void RemoveAttachment(const base::FilePath& attachment) override;
 
  private:

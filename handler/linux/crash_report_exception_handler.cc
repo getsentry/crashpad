@@ -26,7 +26,6 @@
 #include "snapshot/sanitized/process_snapshot_sanitized.h"
 #include "util/file/file_helper.h"
 #include "util/file/file_reader.h"
-#include "util/file/file_writer.h"
 #include "util/file/output_stream_file_writer.h"
 #include "util/linux/direct_ptrace_connection.h"
 #include "util/linux/ptrace_client.h"
@@ -225,31 +224,6 @@ void CrashReportExceptionHandler::AddAttachment(
     return;
   }
   attachments_.push_back(attachment);
-}
-
-void CrashReportExceptionHandler::WriteAttachment(
-    const base::FilePath& attachment, const std::string& data) {
-  FileWriter writer;
-  if (!writer.Open(attachment,
-                   FileWriteMode::kTruncateOrCreate,
-                   FilePermissions::kOwnerOnly) ||
-      !writer.Write(data.data(), data.size())) {
-    LOG(ERROR) << "failed to write attachment " << attachment;
-    return;
-  }
-}
-
-void CrashReportExceptionHandler::AppendAttachment(
-    const base::FilePath& attachment, const std::string& data) {
-  FileWriter writer;
-  if (!writer.Open(attachment,
-                   FileWriteMode::kReuseOrCreate,
-                   FilePermissions::kOwnerOnly) ||
-      writer.Seek(0, SEEK_END) < 0 ||
-      !writer.Write(data.data(), data.size())) {
-    LOG(ERROR) << "failed to write attachment " << attachment;
-    return;
-  }
 }
 
 void CrashReportExceptionHandler::RemoveAttachment(

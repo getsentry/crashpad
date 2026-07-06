@@ -101,8 +101,7 @@ bool UnixCredentialSocket::RecvMsg(int fd,
                                    void* buf,
                                    size_t buf_size,
                                    ucred* creds,
-                                   std::vector<ScopedFileHandle>* fds,
-                                   ssize_t* bytes_received) {
+                                   std::vector<ScopedFileHandle>* fds) {
   iovec iov;
   iov.iov_base = buf;
   iov.iov_len = buf_size;
@@ -120,9 +119,6 @@ bool UnixCredentialSocket::RecvMsg(int fd,
   if (res < 0) {
     PLOG(ERROR) << "recvmsg";
     return false;
-  }
-  if (bytes_received) {
-    *bytes_received = res;
   }
 
   ucred* local_creds = nullptr;
@@ -182,7 +178,7 @@ bool UnixCredentialSocket::RecvMsg(int fd,
     return false;
   }
 
-  if (!bytes_received && static_cast<size_t>(res) != buf_size) {
+  if (static_cast<size_t>(res) != buf_size) {
     LOG(ERROR) << "incorrect payload size " << res;
     return false;
   }

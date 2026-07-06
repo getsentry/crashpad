@@ -16,7 +16,6 @@
 
 #include <errno.h>
 #include <signal.h>
-#include <string.h>
 #include <sys/prctl.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -27,7 +26,6 @@
 #include "build/build_config.h"
 #include "third_party/lss/lss.h"
 #include "util/file/file_io.h"
-#include "util/file/file_writer.h"
 #include "util/linux/ptrace_broker.h"
 #include "util/linux/socket.h"
 #include "util/misc/from_pointer_cast.h"
@@ -63,71 +61,6 @@ class ScopedSigprocmaskRestore {
   kernel_sigset_t orig_mask_;
   bool mask_is_set_;
 };
-
-bool WriteAttachmentFile(
-    const base::FilePath& attachment,
-    const std::string& data,
-    ExceptionHandlerProtocol::AttachmentWriteOperation operation) {
-  FileWriter writer;
-  if (!writer.Open(attachment,
-                   operation == ExceptionHandlerProtocol::kAttachmentWriteAppend
-                       ? FileWriteMode::kReuseOrCreate
-                       : FileWriteMode::kTruncateOrCreate,
-                   FilePermissions::kOwnerOnly) ||
-      (operation == ExceptionHandlerProtocol::kAttachmentWriteAppend &&
-       writer.Seek(0, SEEK_END) < 0) ||
-      !writer.Write(data.data(), data.size())) {
-    LOG(ERROR) << "failed to write attachment " << attachment;
-    return false;
-  }
-  return true;
-}
-
-bool SendAttachmentWrite(
-    int server_sock,
-    const base::FilePath& attachment,
-    const std::string& data,
-    ExceptionHandlerProtocol::AttachmentWriteOperation operation) {
-  if (attachment.value().size() + 1 > PATH_MAX) {
-    LOG(ERROR) << "attachment path too long: " << attachment.value().size()
-               << " bytes";
-    return false;
-  }
-  if (data.size() >
-      ExceptionHandlerProtocol::kMaxAttachmentWritePayloadSize) {
-    return WriteAttachmentFile(attachment, data, operation);
-  }
-
-  ExceptionHandlerProtocol::ClientToServerMessage message;
-  message.type =
-      ExceptionHandlerProtocol::ClientToServerMessage::kTypeWriteAttachment;
-  message.attachment_write_info.path_size =
-      static_cast<uint32_t>(attachment.value().size() + 1);
-  message.attachment_write_info.payload_size =
-      static_cast<uint32_t>(data.size());
-  message.attachment_write_info.operation = operation;
-
-  std::string payload(sizeof(message) + attachment.value().size() + 1 +
-                          data.size(),
-                      '\0');
-  memcpy(&payload[0], &message, sizeof(message));
-  memcpy(&payload[sizeof(message)], attachment.value().c_str(),
-         attachment.value().size() + 1);
-  if (!data.empty()) {
-    memcpy(&payload[sizeof(message) + attachment.value().size() + 1],
-           data.data(),
-           data.size());
-  }
-  int result =
-      UnixCredentialSocket::SendMsg(server_sock, payload.data(), payload.size());
-  if (result == 0) {
-    return true;
-  }
-  if (result == EMSGSIZE || result == ENOBUFS) {
-    return WriteAttachmentFile(attachment, data, operation);
-  }
-  return false;
-}
 
 }  // namespace
 
@@ -299,24 +232,6 @@ void ExceptionHandlerClient::AddAttachment(const base::FilePath& attachment) {
   snprintf(
       message.attachment_info.path, PATH_MAX, "%s", attachment.value().c_str());
   UnixCredentialSocket::SendMsg(server_sock_, &message, sizeof(message));
-}
-
-bool ExceptionHandlerClient::WriteAttachment(const base::FilePath& attachment,
-                                             const std::string& data) {
-  return SendAttachmentWrite(
-      server_sock_,
-      attachment,
-      data,
-      ExceptionHandlerProtocol::kAttachmentWriteReplace);
-}
-
-bool ExceptionHandlerClient::AppendAttachment(const base::FilePath& attachment,
-                                              const std::string& data) {
-  return SendAttachmentWrite(
-      server_sock_,
-      attachment,
-      data,
-      ExceptionHandlerProtocol::kAttachmentWriteAppend);
 }
 
 void ExceptionHandlerClient::RemoveAttachment(

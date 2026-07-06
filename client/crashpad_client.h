@@ -865,11 +865,11 @@ class CrashpadClient {
   //! \param[in] attachment The path to the file to be added.
   void AddAttachment(const base::FilePath& attachment);
 
-  //! \brief Writes content to a handler-side attachment file.
+  //! \brief Writes content to an attachment file.
   bool WriteAttachment(
       const base::FilePath& attachment, const std::string& data);
 
-  //! \brief Appends content to a handler-side attachment file.
+  //! \brief Appends content to an attachment file.
   bool AppendAttachment(
       const base::FilePath& attachment, const std::string& data);
 

@@ -88,8 +88,7 @@ class UnixCredentialSocket {
                       void* buf,
                       size_t buf_size,
                       ucred* creds,
-                      std::vector<ScopedFileHandle>* fds = nullptr,
-                      ssize_t* bytes_received = nullptr);
+                      std::vector<ScopedFileHandle>* fds = nullptr);
 };
 
 }  // namespace crashpad

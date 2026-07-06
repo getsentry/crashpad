@@ -20,7 +20,6 @@
 
 #include <atomic>
 #include <memory>
-#include <string>
 #include <unordered_map>
 
 #include "util/file/file_io.h"
@@ -114,14 +113,6 @@ class ExceptionHandlerServer {
 
     //! \brief Called to add an attachment to the crash report.
     virtual void AddAttachment(const base::FilePath& attachment) = 0;
-
-    //! \brief Called to write an attachment's contents.
-    virtual void WriteAttachment(
-        const base::FilePath& attachment, const std::string& data) = 0;
-
-    //! \brief Called to append to an attachment's contents.
-    virtual void AppendAttachment(
-        const base::FilePath& attachment, const std::string& data) = 0;
 
     //! \brief Called to remove an attachment from the crash report.
     virtual void RemoveAttachment(const base::FilePath& attachment) = 0;

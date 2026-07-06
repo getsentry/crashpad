@@ -24,7 +24,6 @@
 #include <unistd.h>
 
 #include <utility>
-#include <vector>
 
 #include "base/check_op.h"
 #include "base/compiler_specific.h"
@@ -453,30 +452,12 @@ bool ExceptionHandlerServer::UninstallClientSocket(Event* event) {
 }
 
 bool ExceptionHandlerServer::ReceiveClientMessage(Event* event) {
-  std::vector<char> message_buffer(
-      sizeof(ExceptionHandlerProtocol::ClientToServerMessage) + PATH_MAX +
-      ExceptionHandlerProtocol::kMaxAttachmentWritePayloadSize);
+  ExceptionHandlerProtocol::ClientToServerMessage message;
   ucred creds;
-  ssize_t bytes_received = 0;
   if (!UnixCredentialSocket::RecvMsg(
-          event->fd.get(),
-          message_buffer.data(),
-          message_buffer.size(),
-          &creds,
-          nullptr,
-          &bytes_received)) {
+          event->fd.get(), &message, sizeof(message), &creds)) {
     return false;
   }
-  if (bytes_received <
-      static_cast<ssize_t>(
-          sizeof(ExceptionHandlerProtocol::ClientToServerMessage))) {
-    LOG(ERROR) << "short client message";
-    return false;
-  }
-
-  const auto& message =
-      *reinterpret_cast<ExceptionHandlerProtocol::ClientToServerMessage*>(
-          message_buffer.data());
 
   switch (message.type) {
     case ExceptionHandlerProtocol::ClientToServerMessage::kTypeCheckCredentials:
@@ -510,42 +491,6 @@ bool ExceptionHandlerServer::ReceiveClientMessage(Event* event) {
       }
       delegate_->RequestRetry();
       return true;
-
-    case ExceptionHandlerProtocol::ClientToServerMessage::
-        kTypeWriteAttachment: {
-      const uint32_t path_size = message.attachment_write_info.path_size;
-      const uint32_t payload_size =
-          message.attachment_write_info.payload_size;
-      const auto operation = static_cast<
-          ExceptionHandlerProtocol::AttachmentWriteOperation>(
-          message.attachment_write_info.operation);
-      if (path_size == 0 || path_size > PATH_MAX ||
-          payload_size >
-              ExceptionHandlerProtocol::kMaxAttachmentWritePayloadSize) {
-        LOG(ERROR) << "invalid attachment write message";
-        return true;
-      }
-      const size_t expected_size =
-          sizeof(ExceptionHandlerProtocol::ClientToServerMessage) + path_size +
-          payload_size;
-      if (bytes_received != static_cast<ssize_t>(expected_size)) {
-        LOG(ERROR) << "truncated attachment write message";
-        return true;
-      }
-
-      const char* path = message_buffer.data() +
-                         sizeof(
-                             ExceptionHandlerProtocol::ClientToServerMessage);
-      const char* payload = path + path_size;
-      if (operation == ExceptionHandlerProtocol::kAttachmentWriteAppend) {
-        delegate_->AppendAttachment(
-            base::FilePath(path), std::string(payload, payload_size));
-      } else {
-        delegate_->WriteAttachment(
-            base::FilePath(path), std::string(payload, payload_size));
-      }
-      return true;
-    }
   }
 
   DCHECK(false);
