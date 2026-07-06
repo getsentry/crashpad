@@ -1252,7 +1252,6 @@ bool CrashpadClient::WriteAttachment(const base::FilePath& attachment,
       static_cast<uint32_t>(path_length_bytes);
   message.attachment_write.payload_length_bytes =
       static_cast<uint32_t>(data.size());
-  message.attachment_write.operation = kAttachmentWriteReplace;
 
   std::string payload(path_length_bytes + data.size(), '\0');
   memcpy(&payload[0], attachment.value().c_str(), path_length_bytes);
@@ -1279,12 +1278,11 @@ bool CrashpadClient::AppendAttachment(const base::FilePath& attachment,
   }
 
   ClientToServerMessage message = {};
-  message.type = ClientToServerMessage::kWriteAttachment;
+  message.type = ClientToServerMessage::kAppendAttachment;
   message.attachment_write.path_length_bytes =
       static_cast<uint32_t>(path_length_bytes);
   message.attachment_write.payload_length_bytes =
       static_cast<uint32_t>(data.size());
-  message.attachment_write.operation = kAttachmentWriteAppend;
 
   std::string payload(path_length_bytes + data.size(), '\0');
   memcpy(&payload[0], attachment.value().c_str(), path_length_bytes);

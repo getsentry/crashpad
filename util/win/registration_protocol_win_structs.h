@@ -132,26 +132,18 @@ struct AttachmentRequestV2 {
   uint32_t path_length_bytes;
 };
 
-enum AttachmentWriteOperation : uint32_t {
-  kAttachmentWriteReplace,
-  kAttachmentWriteAppend,
-};
-
 //! \brief A variable-length attachment write request header.
 //!
-//! For kWriteAttachment, the message consists of a ClientToServerMessage
-//! with this header in the union, followed by path_length_bytes of wchar_t data
-//! containing the null-terminated path and payload_length_bytes of attachment
-//! content.
+//! For kWriteAttachment and kAppendAttachment, the message consists of a
+//! ClientToServerMessage with this header in the union, followed by
+//! path_length_bytes of wchar_t data containing the null-terminated path and
+//! payload_length_bytes of attachment content.
 struct AttachmentWriteRequest {
   //! \brief Length of the path in bytes, including null terminator.
   uint32_t path_length_bytes;
 
   //! \brief Length of the attachment content in bytes.
   uint32_t payload_length_bytes;
-
-  //! \brief The write operation to apply to the attachment content.
-  uint32_t operation;
 };
 
 //! follow the maximum path length documented here:
@@ -192,6 +184,9 @@ struct ClientToServerMessage {
 
     //! \brief For AttachmentWriteRequest.
     kWriteAttachment,
+
+    //! \brief For AttachmentWriteRequest.
+    kAppendAttachment,
   } type;
 
   union {

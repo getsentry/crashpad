@@ -528,24 +528,24 @@ static void HandleRemoveAttachmentV2(
   LoggingWriteFile(service_context.pipe(), &response, sizeof(response));
 }
 
-static void HandleWriteAttachment(
+static bool ReadAttachment(
     const internal::PipeServiceContext& service_context,
-    const ClientToServerMessage& message) {
+    const ClientToServerMessage& message,
+    base::FilePath* attachment,
+    std::string* payload) {
   const uint32_t path_length_bytes =
       message.attachment_write.path_length_bytes;
   const uint32_t payload_length_bytes =
       message.attachment_write.payload_length_bytes;
-  const auto operation =
-      static_cast<AttachmentWriteOperation>(message.attachment_write.operation);
 
   if (path_length_bytes == 0 || path_length_bytes > kMaxPathBytes ||
       path_length_bytes % sizeof(wchar_t) != 0) {
     LOG(ERROR) << "Invalid path length: " << path_length_bytes;
-    return;
+    return false;
   }
   if (payload_length_bytes > UINT32_MAX - path_length_bytes) {
     LOG(ERROR) << "Invalid attachment write length";
-    return;
+    return false;
   }
 
   const uint32_t request_payload_length_bytes =
@@ -556,7 +556,7 @@ static void HandleWriteAttachment(
           &request_payload[0],
           request_payload_length_bytes)) {
     LOG(ERROR) << "Failed to read attachment write";
-    return;
+    return false;
   }
 
   const size_t path_length = path_length_bytes / sizeof(wchar_t) - 1;
@@ -567,17 +567,42 @@ static void HandleWriteAttachment(
            path_length_bytes - sizeof(wchar_t));
   }
 
-  std::string payload(
-      request_payload.data() + path_length_bytes, payload_length_bytes);
+  *attachment = base::FilePath(path);
+  *payload =
+      std::string(request_payload.data() + path_length_bytes,
+                  payload_length_bytes);
+  return true;
+}
+
+static void HandleWriteAttachment(
+    const internal::PipeServiceContext& service_context,
+    const ClientToServerMessage& message) {
+  base::FilePath attachment;
+  std::string payload;
+  if (!ReadAttachment(
+          service_context, message, &attachment, &payload)) {
+    return;
+  }
 
   ServerToClientMessage response = {};
-  if (operation == kAttachmentWriteAppend) {
-    service_context.delegate()->ExceptionHandlerServerAttachmentAppended(
-        base::FilePath(path), payload);
-  } else {
-    service_context.delegate()->ExceptionHandlerServerAttachmentWritten(
-        base::FilePath(path), payload);
+  service_context.delegate()->ExceptionHandlerServerAttachmentWritten(
+      attachment, payload);
+  LoggingWriteFile(service_context.pipe(), &response, sizeof(response));
+}
+
+static void HandleAppendAttachment(
+    const internal::PipeServiceContext& service_context,
+    const ClientToServerMessage& message) {
+  base::FilePath attachment;
+  std::string payload;
+  if (!ReadAttachment(
+          service_context, message, &attachment, &payload)) {
+    return;
   }
+
+  ServerToClientMessage response = {};
+  service_context.delegate()->ExceptionHandlerServerAttachmentAppended(
+      attachment, payload);
   LoggingWriteFile(service_context.pipe(), &response, sizeof(response));
 }
 
@@ -666,6 +691,11 @@ bool ExceptionHandlerServer::ServiceClientConnection(
 
     case ClientToServerMessage::kWriteAttachment: {
       HandleWriteAttachment(service_context, message);
+      return false;
+    }
+
+    case ClientToServerMessage::kAppendAttachment: {
+      HandleAppendAttachment(service_context, message);
       return false;
     }
 
