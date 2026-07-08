@@ -72,13 +72,15 @@ class PipeServiceContext {
                      ExceptionHandlerServer::Delegate* delegate,
                      base::Lock* clients_lock,
                      std::set<internal::ClientData*>* clients,
-                     uint64_t shutdown_token)
+                     uint64_t shutdown_token,
+                     DWORD owner_process_id)
       : port_(port),
         pipe_(pipe),
         delegate_(delegate),
         clients_lock_(clients_lock),
         clients_(clients),
-        shutdown_token_(shutdown_token) {}
+        shutdown_token_(shutdown_token),
+        owner_process_id_(owner_process_id) {}
 
   PipeServiceContext(const PipeServiceContext&) = delete;
   PipeServiceContext& operator=(const PipeServiceContext&) = delete;
@@ -89,6 +91,7 @@ class PipeServiceContext {
   base::Lock* clients_lock() const { return clients_lock_; }
   std::set<internal::ClientData*>* clients() const { return clients_; }
   uint64_t shutdown_token() const { return shutdown_token_; }
+  DWORD owner_process_id() const { return owner_process_id_; }
 
  private:
   HANDLE port_;  // weak
@@ -97,6 +100,7 @@ class PipeServiceContext {
   base::Lock* clients_lock_;  // weak
   std::set<internal::ClientData*>* clients_;  // weak
   uint64_t shutdown_token_;
+  DWORD owner_process_id_;
 };
 
 //! \brief The context data for registered threadpool waits.
@@ -272,6 +276,7 @@ ExceptionHandlerServer::ExceptionHandlerServer(bool persistent)
     : pipe_name_(),
       port_(CreateIoCompletionPort(INVALID_HANDLE_VALUE, nullptr, 0, 1)),
       first_pipe_instance_(),
+      owner_process_id_(0),
       clients_lock_(),
       clients_(),
       persistent_(persistent) {
@@ -294,6 +299,8 @@ void ExceptionHandlerServer::InitializeWithInheritedDataForInitialClient(
   DCHECK(!first_pipe_instance_.is_valid());
 
   first_pipe_instance_.reset(initial_client_data.first_pipe_instance());
+  owner_process_id_ = GetProcessId(initial_client_data.client_process());
+  PLOG_IF(ERROR, owner_process_id_ == 0) << "GetProcessId";
 
   // Allocate buffer for FILE_NAME_INFO with maximum pipe name length.
   // According to Windows documentation, pipe name strings are limited to 256
@@ -356,7 +363,8 @@ void ExceptionHandlerServer::Run(Delegate* delegate) {
                                          delegate,
                                          &clients_lock_,
                                          &clients_,
-                                         shutdown_token);
+                                         shutdown_token,
+                                         owner_process_id_);
     thread_handles[i].reset(
         CreateThread(nullptr, 0, &PipeServiceProc, context, 0, nullptr));
     PCHECK(thread_handles[i].is_valid()) << "CreateThread";
@@ -417,6 +425,36 @@ void ExceptionHandlerServer::Run(Delegate* delegate) {
 void ExceptionHandlerServer::Stop() {
   // Post a null key (third argument) to trigger shutdown.
   PostQueuedCompletionStatus(port_.get(), 0, 0, nullptr);
+}
+
+static bool RuntimeMessageOriginIsOwner(
+    const internal::PipeServiceContext& service_context) {
+  if (service_context.owner_process_id() == 0) {
+    LOG(WARNING) << "rejecting runtime control message without owner pid";
+    return false;
+  }
+
+  decltype(GetNamedPipeClientProcessId)* get_named_pipe_client_process_id =
+      GetNamedPipeClientProcessIdFunction();
+  if (!get_named_pipe_client_process_id) {
+    LOG(WARNING) << "rejecting runtime control message without peer pid";
+    return false;
+  }
+
+  DWORD client_process_id = 0;
+  if (!get_named_pipe_client_process_id(service_context.pipe(),
+                                        &client_process_id)) {
+    PLOG(WARNING) << "GetNamedPipeClientProcessId";
+    return false;
+  }
+
+  if (client_process_id != service_context.owner_process_id()) {
+    LOG(WARNING) << "rejecting runtime control message from non-owner pid "
+                 << client_process_id;
+    return false;
+  }
+
+  return true;
 }
 
 static void HandleAddAttachmentV2(
@@ -525,6 +563,9 @@ bool ExceptionHandlerServer::ServiceClientConnection(
       break;
 
     case ClientToServerMessage::kAddAttachment: {
+      if (!RuntimeMessageOriginIsOwner(service_context)) {
+        return false;
+      }
       ServerToClientMessage shutdown_response = {};
       service_context.delegate()->ExceptionHandlerServerAttachmentAdded(
           base::FilePath(message.attachment.path));
@@ -535,6 +576,9 @@ bool ExceptionHandlerServer::ServiceClientConnection(
     }
 
     case ClientToServerMessage::kRemoveAttachment: {
+      if (!RuntimeMessageOriginIsOwner(service_context)) {
+        return false;
+      }
       ServerToClientMessage shutdown_response = {};
       service_context.delegate()->ExceptionHandlerServerAttachmentRemoved(
           base::FilePath(message.attachment.path));
@@ -545,20 +589,28 @@ bool ExceptionHandlerServer::ServiceClientConnection(
     }
 
     case ClientToServerMessage::kAddAttachmentV2: {
+      if (!RuntimeMessageOriginIsOwner(service_context)) {
+        return false;
+      }
       HandleAddAttachmentV2(service_context, message);
       return false;
     }
 
     case ClientToServerMessage::kRemoveAttachmentV2: {
+      if (!RuntimeMessageOriginIsOwner(service_context)) {
+        return false;
+      }
       HandleRemoveAttachmentV2(service_context, message);
       return false;
     }
 
     case ClientToServerMessage::kRequestRetry: {
+      if (!RuntimeMessageOriginIsOwner(service_context)) {
+        return false;
+      }
       ServerToClientMessage response = {};
       service_context.delegate()->ExceptionHandlerServerRetryRequested();
-      LoggingWriteFile(
-          service_context.pipe(), &response, sizeof(response));
+      LoggingWriteFile(service_context.pipe(), &response, sizeof(response));
       return false;
     }
 
