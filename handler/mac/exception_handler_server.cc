@@ -87,8 +87,8 @@ class ClientToServerMessageServer : public MachMessageServer::Interface {
  private:
   bool RuntimeMessageOriginIsOwner(const mach_msg_header_t* in_header) const {
     if (owner_process_id_ <= 0) {
-      LOG(WARNING) << "rejecting runtime control message without owner pid";
-      return false;
+      // No owner is configured for launchd Mach service handlers.
+      return true;
     }
 
     pid_t sender_process_id =

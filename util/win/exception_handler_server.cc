@@ -430,15 +430,15 @@ void ExceptionHandlerServer::Stop() {
 static bool RuntimeMessageOriginIsOwner(
     const internal::PipeServiceContext& service_context) {
   if (service_context.owner_process_id() == 0) {
-    LOG(WARNING) << "rejecting runtime control message without owner pid";
-    return false;
+    // No owner is configured for prestarted named-pipe handlers.
+    return true;
   }
 
   decltype(GetNamedPipeClientProcessId)* get_named_pipe_client_process_id =
       GetNamedPipeClientProcessIdFunction();
   if (!get_named_pipe_client_process_id) {
-    LOG(WARNING) << "rejecting runtime control message without peer pid";
-    return false;
+    // Match registration behavior on systems without peer PID support.
+    return true;
   }
 
   DWORD client_process_id = 0;
