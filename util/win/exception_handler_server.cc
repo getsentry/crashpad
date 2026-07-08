@@ -585,9 +585,11 @@ static void HandleWriteAttachment(
   }
 
   ServerToClientMessage response = {};
+  if (!LoggingWriteFile(service_context.pipe(), &response, sizeof(response))) {
+    return;
+  }
   service_context.delegate()->ExceptionHandlerServerAttachmentWritten(
       attachment, payload);
-  LoggingWriteFile(service_context.pipe(), &response, sizeof(response));
 }
 
 static void HandleAppendAttachment(
@@ -601,9 +603,11 @@ static void HandleAppendAttachment(
   }
 
   ServerToClientMessage response = {};
+  if (!LoggingWriteFile(service_context.pipe(), &response, sizeof(response))) {
+    return;
+  }
   service_context.delegate()->ExceptionHandlerServerAttachmentAppended(
       attachment, payload);
-  LoggingWriteFile(service_context.pipe(), &response, sizeof(response));
 }
 
 // This function must be called with service_context.pipe() already connected to
