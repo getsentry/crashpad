@@ -150,6 +150,9 @@ struct AttachmentWriteRequest {
 //! https://learn.microsoft.com/en-us/windows/win32/fileio/maximum-file-path-limitation
 constexpr uint32_t kMaxPathBytes = 32768 * sizeof(wchar_t);
 
+//! \brief Maximum variable-length attachment content payload, in bytes.
+constexpr uint32_t kMaxAttachmentPayloadBytes = 100 * 1024 * 1024;
+
 //! \brief The message passed from client to server by
 //!     SendToCrashHandlerServer().
 struct ClientToServerMessage {

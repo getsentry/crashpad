@@ -543,6 +543,11 @@ static bool ReadAttachment(
     LOG(ERROR) << "Invalid path length: " << path_length_bytes;
     return false;
   }
+  if (payload_length_bytes > kMaxAttachmentPayloadBytes) {
+    LOG(ERROR) << "Invalid attachment payload length: "
+               << payload_length_bytes;
+    return false;
+  }
   if (payload_length_bytes > UINT32_MAX - path_length_bytes) {
     LOG(ERROR) << "Invalid attachment write length";
     return false;

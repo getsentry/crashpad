@@ -1241,6 +1241,7 @@ bool CrashpadClient::WriteAttachment(const base::FilePath& attachment,
   const size_t path_length_bytes =
       (attachment.value().length() + 1) * sizeof(wchar_t);
   if (path_length_bytes > kMaxPathBytes ||
+      data.size() > kMaxAttachmentPayloadBytes ||
       data.size() > UINT32_MAX - path_length_bytes) {
     LOG(ERROR) << "attachment content too large";
     return false;
@@ -1272,6 +1273,7 @@ bool CrashpadClient::AppendAttachment(const base::FilePath& attachment,
   const size_t path_length_bytes =
       (attachment.value().length() + 1) * sizeof(wchar_t);
   if (path_length_bytes > kMaxPathBytes ||
+      data.size() > kMaxAttachmentPayloadBytes ||
       data.size() > UINT32_MAX - path_length_bytes) {
     LOG(ERROR) << "attachment content too large";
     return false;
