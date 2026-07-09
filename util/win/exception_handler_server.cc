@@ -302,7 +302,7 @@ void ExceptionHandlerServer::InitializeWithInheritedDataForInitialClient(
 
   first_pipe_instance_.reset(initial_client_data.first_pipe_instance());
   owner_process_id_ = GetProcessId(initial_client_data.client_process());
-  PLOG_IF(ERROR, owner_process_id_ == 0) << "GetProcessId";
+  PLOG_IF(FATAL, owner_process_id_ == 0) << "GetProcessId";
 
   // Allocate buffer for FILE_NAME_INFO with maximum pipe name length.
   // According to Windows documentation, pipe name strings are limited to 256

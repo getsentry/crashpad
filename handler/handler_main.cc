@@ -1069,6 +1069,10 @@ int HandlerMain(int argc,
         me, "--handshake-fd and --mach-service are incompatible");
     return ExitFailure();
   }
+  if (options.handshake_fd >= 0 && options.client_pid <= 0) {
+    ToolSupport::UsageHint(me, "--client-pid is required with --handshake-fd");
+    return ExitFailure();
+  }
 #elif BUILDFLAG(IS_WIN)
   if (!options.initial_client_data.IsValid() && options.pipe_name.empty()) {
     ToolSupport::UsageHint(me,
