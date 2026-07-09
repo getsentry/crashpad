@@ -40,6 +40,8 @@ namespace crashpad {
 
 namespace {
 
+constexpr DWORD kNoOwnerProcessId = static_cast<DWORD>(-1);
+
 decltype(GetNamedPipeClientProcessId)* GetNamedPipeClientProcessIdFunction() {
   static const auto get_named_pipe_client_process_id =
       GET_FUNCTION(L"kernel32.dll", ::GetNamedPipeClientProcessId);
@@ -276,7 +278,7 @@ ExceptionHandlerServer::ExceptionHandlerServer(bool persistent)
     : pipe_name_(),
       port_(CreateIoCompletionPort(INVALID_HANDLE_VALUE, nullptr, 0, 1)),
       first_pipe_instance_(),
-      owner_process_id_(0),
+      owner_process_id_(kNoOwnerProcessId),
       clients_lock_(),
       clients_(),
       persistent_(persistent) {
@@ -429,9 +431,14 @@ void ExceptionHandlerServer::Stop() {
 
 static bool RuntimeMessageOriginIsOwner(
     const internal::PipeServiceContext& service_context) {
-  if (service_context.owner_process_id() == 0) {
+  if (service_context.owner_process_id() == kNoOwnerProcessId) {
     // No owner is configured for prestarted named-pipe handlers.
     return true;
+  }
+
+  if (service_context.owner_process_id() == 0) {
+    LOG(WARNING) << "rejecting runtime control message without owner pid";
+    return false;
   }
 
   decltype(GetNamedPipeClientProcessId)* get_named_pipe_client_process_id =
