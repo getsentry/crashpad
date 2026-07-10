@@ -699,11 +699,17 @@ bool ExceptionHandlerServer::ServiceClientConnection(
     }
 
     case ClientToServerMessage::kWriteAttachment: {
+      if (!RuntimeMessageOriginIsOwner(service_context)) {
+        return false;
+      }
       HandleWriteAttachment(service_context, message);
       return false;
     }
 
     case ClientToServerMessage::kAppendAttachment: {
+      if (!RuntimeMessageOriginIsOwner(service_context)) {
+        return false;
+      }
       HandleAppendAttachment(service_context, message);
       return false;
     }
