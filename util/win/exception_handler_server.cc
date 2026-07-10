@@ -589,6 +589,9 @@ static void HandleWriteAttachment(
     return;
   }
 
+  // Acknowledge IPC payload acceptance before disk I/O. This message exists to
+  // offload potentially slow disk I/O from the client; waiting for the file
+  // write would make the client block on the work this API is meant to avoid.
   ServerToClientMessage response = {};
   if (!LoggingWriteFile(service_context.pipe(), &response, sizeof(response))) {
     return;
@@ -607,6 +610,9 @@ static void HandleAppendAttachment(
     return;
   }
 
+  // Acknowledge IPC payload acceptance before disk I/O. This message exists to
+  // offload potentially slow disk I/O from the client; waiting for the file
+  // append would make the client block on the work this API is meant to avoid.
   ServerToClientMessage response = {};
   if (!LoggingWriteFile(service_context.pipe(), &response, sizeof(response))) {
     return;
