@@ -190,7 +190,8 @@ bool SpawnSubprocess(const std::vector<std::string>& argv,
 
     auto execve_fp = use_path ? execvpe : execve;
     execve_fp(argv_for_spawn[0], argv_for_spawn, envp_for_spawn);
-    _exit(errno);
+    PLOG(FATAL) << (use_path ? "execvpe" : "execve") << " "
+                << argv_for_spawn[0];
 #else
 #if BUILDFLAG(IS_APPLE)
     PosixSpawnAttr attr;
