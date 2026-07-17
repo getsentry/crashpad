@@ -75,7 +75,7 @@ target_link_libraries(crashpad_client
         crashpad_util
         mini_chromium
 )
-target_compile_features(crashpad_client PUBLIC cxx_std_14)
+target_compile_features(crashpad_client PUBLIC cxx_std_17)
 
 set_property(TARGET crashpad_client PROPERTY EXPORT_NAME client)
 add_library(crashpad::client ALIAS crashpad_client)
