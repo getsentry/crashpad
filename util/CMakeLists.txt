@@ -167,6 +167,8 @@ if(APPLE)
         mach/mach_message_server.h
         mach/symbolic_constants_mach.cc
         mach/symbolic_constants_mach.h
+        mac/sysctl.cc
+        mac/sysctl.h
         misc/capture_context_mac.S
         misc/clock_mac.cc
         misc/paths_mac.cc
@@ -182,8 +184,6 @@ if(APPLE)
             mac/mac_util.h
             mac/service_management.cc
             mac/service_management.h
-            mac/sysctl.cc
-            mac/sysctl.h
             mach/bootstrap.cc
             mach/bootstrap.h
             mach/child_port_handshake.cc

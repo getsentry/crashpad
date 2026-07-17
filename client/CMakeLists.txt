@@ -109,6 +109,7 @@ endif()
 if(IOS)
     target_link_libraries(crashpad_client
         PUBLIC
+            crashpad_handler_lib
             crashpad_minidump
             crashpad_snapshot
     )
