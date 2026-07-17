@@ -13,6 +13,7 @@ endif()
 option(CRASHPAD_ENABLE_INSTALL "Enable crashpad installation" "${CRASHPAD_MAIN_PROJECT}")
 option(CRASHPAD_ENABLE_INSTALL_DEV "Enable crashpad development installation" "${CRASHPAD_MAIN_PROJECT}")
 option(CRASHPAD_ENABLE_STACKTRACE "Enable client-side stack trace recording" OFF)
+option(CRASHPAD_BUILD_LINK_TESTS "Build crashpad link tests")
 
 if(MSVC)
     set(CRASHPAD_ZLIB_SYSTEM_DEFAULT OFF)
@@ -179,6 +180,9 @@ add_subdirectory(third_party/mpack)
 
 add_subdirectory(tools)
 add_subdirectory(handler)
+if(CRASHPAD_BUILD_LINK_TESTS)
+    add_subdirectory(test/link)
+endif()
 
 if(CRASHPAD_ENABLE_STACKTRACE AND APPLE AND NOT IOS)
     set(LIBUNWIND_ENABLE_SHARED OFF)

@@ -129,7 +129,7 @@ jobs:
           [ "${{ matrix.CC }}" ] && export CC="${{ matrix.CC }}"
           [ "${{ matrix.CXX }}" ] && export CXX="${{ matrix.CXX }}"
           echo "CMAKE_DEFINES=${CMAKE_DEFINES}"
-          eval "cmake -B cmake-build -D CRASHPAD_BUILD_TOOLS=On $CMAKE_DEFINES"
+          eval "cmake -B cmake-build -D CRASHPAD_BUILD_TOOLS=On -D CRASHPAD_BUILD_LINK_TESTS=ON $CMAKE_DEFINES"
           cmake --build cmake-build --parallel
 
       - name: Build crashpad with client-side stack traces
@@ -138,7 +138,7 @@ jobs:
           [ "${{ matrix.CC }}" ] && export CC="${{ matrix.CC }}"
           [ "${{ matrix.CXX }}" ] && export CXX="${{ matrix.CXX }}"
           echo "CMAKE_DEFINES=${CMAKE_DEFINES}"
-          eval "cmake -B cmake-build-stacks -D CRASHPAD_ENABLE_STACKTRACE=ON $CMAKE_DEFINES"
+          eval "cmake -B cmake-build-stacks -D CRASHPAD_ENABLE_STACKTRACE=ON -D CRASHPAD_BUILD_LINK_TESTS=OFF $CMAKE_DEFINES"
           cmake --build cmake-build-stacks --parallel
 
   build-ios:
@@ -149,5 +149,9 @@ jobs:
         with:
           submodules: "recursive"
       - run: |
-          cmake -B crashpad-xcode -GXcode -DCMAKE_SYSTEM_NAME=iOS
-          xcodebuild build -project crashpad-xcode/crashpad.xcodeproj
+          cmake -B crashpad-xcode -GXcode -DCMAKE_SYSTEM_NAME=iOS -DCRASHPAD_BUILD_LINK_TESTS=ON
+          xcodebuild build \
+            -project crashpad-xcode/crashpad.xcodeproj \
+            -target crashpad_client_link_test \
+            -sdk iphonesimulator \
+            CODE_SIGNING_ALLOWED=NO
