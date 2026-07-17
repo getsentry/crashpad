@@ -1,6 +1,7 @@
 add_executable(crashpad_client_link_test
     client_link_test.cc
 )
+set_property(TARGET crashpad_client_link_test PROPERTY WIN32_EXECUTABLE OFF)
 
 target_link_libraries(crashpad_client_link_test PRIVATE
     crashpad_client

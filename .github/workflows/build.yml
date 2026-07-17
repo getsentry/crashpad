@@ -153,5 +153,4 @@ jobs:
           xcodebuild build \
             -project crashpad-xcode/crashpad.xcodeproj \
             -target crashpad_client_link_test \
-            -sdk iphonesimulator \
             CODE_SIGNING_ALLOWED=NO

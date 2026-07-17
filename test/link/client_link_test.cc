@@ -21,7 +21,11 @@
 #include "base/files/file_path.h"
 #include "build/build_config.h"
 
+#if BUILDFLAG(IS_WIN)
+int wmain(int, wchar_t*[]) {
+#else
 int main() {
+#endif
 #if BUILDFLAG(IS_IOS)
   crashpad::CrashpadClient::StartCrashpadInProcessHandler(
       base::FilePath(),
