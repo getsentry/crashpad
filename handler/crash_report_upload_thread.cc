@@ -104,6 +104,7 @@ CrashReportUploadThread::CrashReportUploadThread(
                                             : WorkerThread::kIndefiniteWait,
               this),
       known_pending_report_uuids_(),
+      process_pending_reports_lock_(),
       database_(database) {
   DCHECK(!url_.empty());
 }
@@ -137,6 +138,8 @@ void CrashReportUploadThread::Stop() {
 }
 
 void CrashReportUploadThread::ProcessPendingReports() {
+  base::AutoLock lock(process_pending_reports_lock_);
+
 #if BUILDFLAG(IS_IOS)
   internal::ScopedBackgroundTask scoper("CrashReportUploadThread");
 #endif  // BUILDFLAG(IS_IOS)

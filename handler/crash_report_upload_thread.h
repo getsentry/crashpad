@@ -20,6 +20,7 @@
 #include <string>
 #include <unordered_map>
 
+#include "base/synchronization/lock.h"
 #include "build/build_config.h"
 #include "client/crash_report_database.h"
 #include "util/misc/uuid.h"
@@ -247,7 +248,8 @@ class CrashReportUploadThread : public WorkerThread::Delegate,
   const std::string http_proxy_;
   WorkerThread thread_;
   ThreadSafeVector<UUID> known_pending_report_uuids_;
-  // This is not thread-safe, and only used by the worker thread.
+  base::Lock process_pending_reports_lock_;
+  // Guarded by process_pending_reports_lock_.
   std::map<UUID, time_t> retry_uuid_time_map_;
   CrashReportDatabase* database_;  // weak
 };
