@@ -67,6 +67,73 @@ ExceptionInformation g_crash_exception_information;
 
 CrashpadClient::FirstChanceHandler first_chance_handler_ = nullptr;
 
+char g_stack_checkpoint_message[160];
+
+char* AppendStackCheckpointText(char* dest,
+                                const char* end,
+                                const char* text) {
+  while (dest < end && *text) {
+    *dest++ = *text++;
+  }
+  return dest;
+}
+
+char* AppendStackCheckpointSize(char* dest,
+                                const char* end,
+                                size_t value) {
+  char digits[24];
+  size_t count = 0;
+  do {
+    digits[count++] = static_cast<char>('0' + value % 10);
+    value /= 10;
+  } while (value && count < sizeof(digits));
+
+  while (dest < end && count) {
+    *dest++ = digits[--count];
+  }
+  return dest;
+}
+
+void LogStackCheckpoint(const char* checkpoint) {
+  ULONG_PTR low = 0;
+  ULONG_PTR high = 0;
+  const char stack_marker = 0;
+  const ULONG_PTR stack_pointer = reinterpret_cast<ULONG_PTR>(&stack_marker);
+  GetCurrentThreadStackLimits(&low, &high);
+
+  const size_t remaining =
+      stack_pointer >= low ? static_cast<size_t>(stack_pointer - low) : 0;
+  const size_t used =
+      stack_pointer <= high ? static_cast<size_t>(high - stack_pointer) : 0;
+
+  char* cursor = g_stack_checkpoint_message;
+  const char* end = g_stack_checkpoint_message +
+                    sizeof(g_stack_checkpoint_message) - 1;
+  cursor = AppendStackCheckpointText(
+      cursor, end, "[crashpad] STACK checkpoint=");
+  cursor = AppendStackCheckpointText(cursor, end, checkpoint);
+  cursor = AppendStackCheckpointText(cursor, end, " remaining=");
+  cursor = AppendStackCheckpointSize(cursor, end, remaining);
+  cursor = AppendStackCheckpointText(cursor, end, " used=");
+  cursor = AppendStackCheckpointSize(cursor, end, used);
+  cursor = AppendStackCheckpointText(cursor, end, " total=");
+  cursor = AppendStackCheckpointSize(
+      cursor, end, high >= low ? static_cast<size_t>(high - low) : 0);
+  cursor = AppendStackCheckpointText(cursor, end, "\n");
+  *cursor = '\0';
+
+  OutputDebugStringA(g_stack_checkpoint_message);
+  HANDLE stderr_handle = GetStdHandle(STD_ERROR_HANDLE);
+  if (stderr_handle && stderr_handle != INVALID_HANDLE_VALUE) {
+    DWORD written;
+    ::WriteFile(stderr_handle,
+                g_stack_checkpoint_message,
+                static_cast<DWORD>(cursor - g_stack_checkpoint_message),
+                &written,
+                nullptr);
+  }
+}
+
 // Guards multiple simultaneous calls to DumpWithoutCrash() in the client.
 base::Lock* g_non_crash_dump_lock = nullptr;
 
@@ -139,6 +206,7 @@ extern "C" LONG __asan_unhandled_exception_filter(EXCEPTION_POINTERS* info);
 #endif
 
 LONG WINAPI UnhandledExceptionHandler(EXCEPTION_POINTERS* exception_pointers) {
+  LogStackCheckpoint("crashpad-uef-enter");
 #if defined(ADDRESS_SANITIZER)
   // In ASan builds, delegate to the ASan exception filter.
   LONG status = __asan_unhandled_exception_filter(exception_pointers);
@@ -146,7 +214,9 @@ LONG WINAPI UnhandledExceptionHandler(EXCEPTION_POINTERS* exception_pointers) {
     return status;
 #endif
 
-  if (BlockUntilHandlerStartedOrFailed() == StartupState::kFailed) {
+  const StartupState startup_state = BlockUntilHandlerStartedOrFailed();
+  LogStackCheckpoint("crashpad-after-startup-wait");
+  if (startup_state == StartupState::kFailed) {
     // If we know for certain that the handler has failed to start, then abort
     // here, rather than trying to signal to a handler that will never arrive,
     // and then sleeping unnecessarily.
@@ -175,6 +245,7 @@ LONG WINAPI UnhandledExceptionHandler(EXCEPTION_POINTERS* exception_pointers) {
   if (std::atomic_fetch_add(&have_crashed, 1) > 0) {
     SleepEx(INFINITE, false);
   }
+  LogStackCheckpoint("crashpad-after-crash-guard");
 
   // TODO(supervacuus):
   //  On Windows the first-chance handler is executed inside the UEF which is
@@ -183,9 +254,11 @@ LONG WINAPI UnhandledExceptionHandler(EXCEPTION_POINTERS* exception_pointers) {
   //  a UEF, at which point they would run concurrently. Adapting to this would
   //  mean to adapt the pipeline, because even if the handler was UEF-safe,
   //  there is currently no way in which to correlate non-nested crashes.
+  LogStackCheckpoint("crashpad-before-first-chance");
   if (first_chance_handler_ && first_chance_handler_(exception_pointers)) {
     return EXCEPTION_CONTINUE_SEARCH;
   }
+  LogStackCheckpoint("crashpad-after-first-chance");
 
   // Otherwise, we're the first thread, so record the exception pointer and
   // signal the crash handler.
@@ -195,7 +268,9 @@ LONG WINAPI UnhandledExceptionHandler(EXCEPTION_POINTERS* exception_pointers) {
 
   // Now signal the crash server, which will take a dump and then terminate us
   // when it's complete.
+  LogStackCheckpoint("crashpad-before-signal");
   SetEvent(g_signal_exception);
+  LogStackCheckpoint("crashpad-after-signal");
 
   // Time to wait for the handler to create a dump.
   constexpr DWORD kMillisecondsUntilTerminate = 60 * 1000;
