@@ -67,20 +67,22 @@ ExceptionInformation g_crash_exception_information;
 
 CrashpadClient::FirstChanceHandler first_chance_handler_ = nullptr;
 
-char g_stack_checkpoint_message[160];
+char g_stack_checkpoint_message[512];
+HANDLE g_stack_checkpoint_stderr = INVALID_HANDLE_VALUE;
+DWORD g_stack_checkpoint_written;
+MEMORY_BASIC_INFORMATION g_stack_current_region;
 
-char* AppendStackCheckpointText(char* dest,
-                                const char* end,
-                                const char* text) {
+constexpr char kUnhandledExceptionEntryMarker[] =
+    "[crashpad] STACK marker=uef-enter\n";
+
+char* AppendStackCheckpointText(char* dest, const char* end, const char* text) {
   while (dest < end && *text) {
     *dest++ = *text++;
   }
   return dest;
 }
 
-char* AppendStackCheckpointSize(char* dest,
-                                const char* end,
-                                size_t value) {
+char* AppendStackCheckpointSize(char* dest, const char* end, size_t value) {
   char digits[24];
   size_t count = 0;
   do {
@@ -101,16 +103,20 @@ void LogStackCheckpoint(const char* checkpoint) {
   const ULONG_PTR stack_pointer = reinterpret_cast<ULONG_PTR>(&stack_marker);
   GetCurrentThreadStackLimits(&low, &high);
 
+  memset(&g_stack_current_region, 0, sizeof(g_stack_current_region));
+  VirtualQuery(
+      &stack_marker, &g_stack_current_region, sizeof(g_stack_current_region));
+
   const size_t remaining =
       stack_pointer >= low ? static_cast<size_t>(stack_pointer - low) : 0;
   const size_t used =
       stack_pointer <= high ? static_cast<size_t>(high - stack_pointer) : 0;
 
   char* cursor = g_stack_checkpoint_message;
-  const char* end = g_stack_checkpoint_message +
-                    sizeof(g_stack_checkpoint_message) - 1;
-  cursor = AppendStackCheckpointText(
-      cursor, end, "[crashpad] STACK checkpoint=");
+  const char* end =
+      g_stack_checkpoint_message + sizeof(g_stack_checkpoint_message) - 1;
+  cursor =
+      AppendStackCheckpointText(cursor, end, "[crashpad] STACK checkpoint=");
   cursor = AppendStackCheckpointText(cursor, end, checkpoint);
   cursor = AppendStackCheckpointText(cursor, end, " remaining=");
   cursor = AppendStackCheckpointSize(cursor, end, remaining);
@@ -119,17 +125,40 @@ void LogStackCheckpoint(const char* checkpoint) {
   cursor = AppendStackCheckpointText(cursor, end, " total=");
   cursor = AppendStackCheckpointSize(
       cursor, end, high >= low ? static_cast<size_t>(high - low) : 0);
+  cursor = AppendStackCheckpointText(cursor, end, " stack_low=");
+  cursor = AppendStackCheckpointSize(cursor, end, low);
+  cursor = AppendStackCheckpointText(cursor, end, " stack_high=");
+  cursor = AppendStackCheckpointSize(cursor, end, high);
+  cursor = AppendStackCheckpointText(cursor, end, " region_base=");
+  cursor = AppendStackCheckpointSize(
+      cursor,
+      end,
+      reinterpret_cast<size_t>(g_stack_current_region.BaseAddress));
+  cursor = AppendStackCheckpointText(cursor, end, " region_size=");
+  cursor =
+      AppendStackCheckpointSize(cursor, end, g_stack_current_region.RegionSize);
+  cursor = AppendStackCheckpointText(cursor, end, " region_state=");
+  cursor = AppendStackCheckpointSize(cursor, end, g_stack_current_region.State);
+  cursor = AppendStackCheckpointText(cursor, end, " region_protect=");
+  cursor =
+      AppendStackCheckpointSize(cursor, end, g_stack_current_region.Protect);
+  cursor = AppendStackCheckpointText(cursor, end, " region_offset=");
+  const size_t region_base =
+      reinterpret_cast<size_t>(g_stack_current_region.BaseAddress);
+  cursor = AppendStackCheckpointSize(
+      cursor,
+      end,
+      stack_pointer >= region_base ? stack_pointer - region_base : 0);
   cursor = AppendStackCheckpointText(cursor, end, "\n");
   *cursor = '\0';
 
   OutputDebugStringA(g_stack_checkpoint_message);
-  HANDLE stderr_handle = GetStdHandle(STD_ERROR_HANDLE);
-  if (stderr_handle && stderr_handle != INVALID_HANDLE_VALUE) {
-    DWORD written;
-    ::WriteFile(stderr_handle,
+  if (g_stack_checkpoint_stderr &&
+      g_stack_checkpoint_stderr != INVALID_HANDLE_VALUE) {
+    ::WriteFile(g_stack_checkpoint_stderr,
                 g_stack_checkpoint_message,
                 static_cast<DWORD>(cursor - g_stack_checkpoint_message),
-                &written,
+                &g_stack_checkpoint_written,
                 nullptr);
   }
 }
@@ -206,6 +235,14 @@ extern "C" LONG __asan_unhandled_exception_filter(EXCEPTION_POINTERS* info);
 #endif
 
 LONG WINAPI UnhandledExceptionHandler(EXCEPTION_POINTERS* exception_pointers) {
+  if (g_stack_checkpoint_stderr &&
+      g_stack_checkpoint_stderr != INVALID_HANDLE_VALUE) {
+    ::WriteFile(g_stack_checkpoint_stderr,
+                kUnhandledExceptionEntryMarker,
+                sizeof(kUnhandledExceptionEntryMarker) - 1,
+                &g_stack_checkpoint_written,
+                nullptr);
+  }
   LogStackCheckpoint("crashpad-uef-enter");
 #if defined(ADDRESS_SANITIZER)
   // In ASan builds, delegate to the ASan exception filter.
@@ -723,6 +760,8 @@ DWORD WINAPI BackgroundHandlerStartThreadProc(void* data) {
 }
 
 void CommonInProcessInitialization() {
+  g_stack_checkpoint_stderr = GetStdHandle(STD_ERROR_HANDLE);
+
   // We create this dummy CRITICAL_SECTION with the
   // RTL_CRITICAL_SECTION_FLAG_FORCE_DEBUG_INFO flag set to have an entry point
   // into the doubly-linked list of RTL_CRITICAL_SECTION_DEBUG objects. This
