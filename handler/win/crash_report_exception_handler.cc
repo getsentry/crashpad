@@ -17,8 +17,8 @@
 #include <type_traits>
 #include <utility>
 
-#include "base/synchronization/lock.h"
 #include "base/strings/utf_string_conversions.h"
+#include "base/synchronization/lock.h"
 #include "client/crash_report_database.h"
 #include "client/settings.h"
 #include "handler/crash_report_upload_thread.h"
@@ -215,12 +215,35 @@ void CrashReportExceptionHandler::ExceptionHandlerServerAttachmentAdded(
   attachments_.push_back(attachment);
 }
 
+// Restrict privileged handler-side attachment file writes to the special
+// `__sentry-xxx` and external crash report attachments that are generated
+// by the backend.
+bool CrashReportExceptionHandler::IsWritableAttachment(
+    const base::FilePath& attachment) {
+  if (crash_envelope_ && !crash_envelope_->empty() &&
+      attachment == *crash_envelope_) {
+    return true;
+  }
+
+  if (std::find(attachments_.begin(), attachments_.end(), attachment) ==
+      attachments_.end()) {
+    return false;
+  }
+
+  if (!CrashReportDatabase::Envelope::IsEvent(attachment) &&
+      !CrashReportDatabase::Envelope::IsBreadcrumb(attachment)) {
+    return false;
+  }
+
+  return true;
+}
+
 void CrashReportExceptionHandler::ExceptionHandlerServerAttachmentWritten(
-    const base::FilePath& attachment, const std::string& data) {
+    const base::FilePath& attachment,
+    const std::string& data) {
   base::AutoLock scoped_lock(attachments_lock_);
-  auto it = std::find(attachments_.begin(), attachments_.end(), attachment);
-  if (it == attachments_.end()) {
-    LOG(WARNING) << "ignoring unregistered attachment " << attachment;
+  if (!IsWritableAttachment(attachment)) {
+    LOG(WARNING) << "ignoring unwritable attachment " << attachment;
     return;
   }
 
@@ -235,11 +258,11 @@ void CrashReportExceptionHandler::ExceptionHandlerServerAttachmentWritten(
 }
 
 void CrashReportExceptionHandler::ExceptionHandlerServerAttachmentAppended(
-    const base::FilePath& attachment, const std::string& data) {
+    const base::FilePath& attachment,
+    const std::string& data) {
   base::AutoLock scoped_lock(attachments_lock_);
-  auto it = std::find(attachments_.begin(), attachments_.end(), attachment);
-  if (it == attachments_.end()) {
-    LOG(WARNING) << "ignoring unregistered attachment " << attachment;
+  if (!IsWritableAttachment(attachment)) {
+    LOG(WARNING) << "ignoring unwritable attachment " << attachment;
     return;
   }
 

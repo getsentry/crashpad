@@ -95,6 +95,8 @@ class CrashReportExceptionHandler final
   void ExceptionHandlerServerRetryRequested() override;
 
  private:
+  bool IsWritableAttachment(const base::FilePath& attachment);
+
   CrashReportDatabase* database_;  // weak
   CrashReportUploadThread* upload_thread_;  // weak
   const std::map<std::string, std::string>* process_annotations_;  // weak

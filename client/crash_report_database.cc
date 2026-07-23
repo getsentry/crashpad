@@ -321,6 +321,19 @@ bool CrashReportDatabase::Envelope::Initialize(const base::FilePath& path) {
 
 CrashReportDatabase::Envelope::Envelope(const UUID& uuid) : uuid_(uuid) {}
 
+// static
+bool CrashReportDatabase::Envelope::IsEvent(const base::FilePath& attachment) {
+  const base::FilePath::StringType basename = attachment.BaseName().value();
+  return basename == FILE_PATH_LITERAL("__sentry-event");
+}
+
+// static
+bool CrashReportDatabase::Envelope::IsBreadcrumb(
+    const base::FilePath& attachment) {
+  const base::FilePath::StringType basename = attachment.BaseName().value();
+  return basename.rfind(FILE_PATH_LITERAL("__sentry-breadcrumb"), 0) == 0;
+}
+
 void CrashReportDatabase::Envelope::AddAttachments(
     const std::vector<base::FilePath>& attachments) {
   base::FilePath event;
@@ -328,14 +341,9 @@ void CrashReportDatabase::Envelope::AddAttachments(
   std::vector<base::FilePath> others;
 
   for (const auto& attachment : attachments) {
-#if BUILDFLAG(IS_WIN)
-    std::string basename = base::WideToUTF8(attachment.BaseName().value());
-#else
-    std::string basename = attachment.BaseName().value();
-#endif
-    if (basename == "__sentry-event") {
+    if (IsEvent(attachment)) {
       event = attachment;
-    } else if (basename.rfind("__sentry-breadcrumb", 0) == 0) {
+    } else if (IsBreadcrumb(attachment)) {
       breadcrumbs.push_back(attachment);
     } else {
       others.push_back(attachment);
