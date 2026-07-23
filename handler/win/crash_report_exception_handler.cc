@@ -17,6 +17,7 @@
 #include <type_traits>
 #include <utility>
 
+#include "base/synchronization/lock.h"
 #include "base/strings/utf_string_conversions.h"
 #include "client/crash_report_database.h"
 #include "client/settings.h"
@@ -33,6 +34,15 @@
 #include "util/win/termination_codes.h"
 
 namespace crashpad {
+
+namespace {
+
+base::Lock& AttachmentWriteLock() {
+  static base::Lock lock;
+  return lock;
+}
+
+}  // namespace
 
 CrashReportExceptionHandler::CrashReportExceptionHandler(
     CrashReportDatabase* database,
@@ -209,6 +219,7 @@ void CrashReportExceptionHandler::ExceptionHandlerServerAttachmentAdded(
 
 void CrashReportExceptionHandler::ExceptionHandlerServerAttachmentWritten(
     const base::FilePath& attachment, const std::string& data) {
+  base::AutoLock scoped_lock(AttachmentWriteLock());
   FileWriter writer;
   if (!writer.Open(attachment,
                    FileWriteMode::kTruncateOrCreate,
@@ -221,6 +232,7 @@ void CrashReportExceptionHandler::ExceptionHandlerServerAttachmentWritten(
 
 void CrashReportExceptionHandler::ExceptionHandlerServerAttachmentAppended(
     const base::FilePath& attachment, const std::string& data) {
+  base::AutoLock scoped_lock(AttachmentWriteLock());
   FileWriter writer;
   if (!writer.Open(attachment,
                    FileWriteMode::kReuseOrCreate,
