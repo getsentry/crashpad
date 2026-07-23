@@ -218,6 +218,12 @@ void CrashReportExceptionHandler::ExceptionHandlerServerAttachmentAdded(
 void CrashReportExceptionHandler::ExceptionHandlerServerAttachmentWritten(
     const base::FilePath& attachment, const std::string& data) {
   base::AutoLock scoped_lock(attachments_lock_);
+  auto it = std::find(attachments_.begin(), attachments_.end(), attachment);
+  if (it == attachments_.end()) {
+    LOG(WARNING) << "ignoring unregistered attachment " << attachment;
+    return;
+  }
+
   FileWriter writer;
   if (!writer.Open(attachment,
                    FileWriteMode::kTruncateOrCreate,
@@ -231,6 +237,12 @@ void CrashReportExceptionHandler::ExceptionHandlerServerAttachmentWritten(
 void CrashReportExceptionHandler::ExceptionHandlerServerAttachmentAppended(
     const base::FilePath& attachment, const std::string& data) {
   base::AutoLock scoped_lock(attachments_lock_);
+  auto it = std::find(attachments_.begin(), attachments_.end(), attachment);
+  if (it == attachments_.end()) {
+    LOG(WARNING) << "ignoring unregistered attachment " << attachment;
+    return;
+  }
+
   FileWriter writer;
   if (!writer.Open(attachment,
                    FileWriteMode::kReuseOrCreate,
