@@ -35,15 +35,6 @@
 
 namespace crashpad {
 
-namespace {
-
-base::Lock& AttachmentFileLock() {
-  static base::Lock lock;
-  return lock;
-}
-
-}  // namespace
-
 CrashReportExceptionHandler::CrashReportExceptionHandler(
     CrashReportDatabase* database,
     CrashReportUploadThread* upload_thread,
@@ -134,7 +125,7 @@ unsigned int CrashReportExceptionHandler::ExceptionHandlerServerException(
     }
 
     {
-      base::AutoLock scoped_lock(AttachmentFileLock());
+      base::AutoLock scoped_lock(attachments_lock_);
       for (const auto& attachment : attachments_) {
         FileReader file_reader;
         if (!file_reader.Open(attachment)) {
@@ -176,7 +167,7 @@ unsigned int CrashReportExceptionHandler::ExceptionHandlerServerException(
       CrashReportDatabase::Envelope envelope(new_report->ReportID());
       if (envelope.Initialize(*crash_envelope_)) {
         {
-          base::AutoLock scoped_lock(AttachmentFileLock());
+          base::AutoLock scoped_lock(attachments_lock_);
           envelope.AddAttachments(attachments_);
         }
         if (auto reader = new_report->Reader()) {
@@ -215,6 +206,7 @@ unsigned int CrashReportExceptionHandler::ExceptionHandlerServerException(
 
 void CrashReportExceptionHandler::ExceptionHandlerServerAttachmentAdded(
     const base::FilePath& attachment) {
+  base::AutoLock scoped_lock(attachments_lock_);
   auto it = std::find(attachments_.begin(), attachments_.end(), attachment);
   if (it != attachments_.end()) {
     LOG(WARNING) << "ignoring duplicate attachment " << attachment;
@@ -225,7 +217,7 @@ void CrashReportExceptionHandler::ExceptionHandlerServerAttachmentAdded(
 
 void CrashReportExceptionHandler::ExceptionHandlerServerAttachmentWritten(
     const base::FilePath& attachment, const std::string& data) {
-  base::AutoLock scoped_lock(AttachmentFileLock());
+  base::AutoLock scoped_lock(attachments_lock_);
   FileWriter writer;
   if (!writer.Open(attachment,
                    FileWriteMode::kTruncateOrCreate,
@@ -238,7 +230,7 @@ void CrashReportExceptionHandler::ExceptionHandlerServerAttachmentWritten(
 
 void CrashReportExceptionHandler::ExceptionHandlerServerAttachmentAppended(
     const base::FilePath& attachment, const std::string& data) {
-  base::AutoLock scoped_lock(AttachmentFileLock());
+  base::AutoLock scoped_lock(attachments_lock_);
   FileWriter writer;
   if (!writer.Open(attachment,
                    FileWriteMode::kReuseOrCreate,
@@ -252,6 +244,7 @@ void CrashReportExceptionHandler::ExceptionHandlerServerAttachmentAppended(
 
 void CrashReportExceptionHandler::ExceptionHandlerServerAttachmentRemoved(
     const base::FilePath& attachment) {
+  base::AutoLock scoped_lock(attachments_lock_);
   auto it = std::find(attachments_.begin(), attachments_.end(), attachment);
   if (it == attachments_.end()) {
     LOG(WARNING) << "ignoring non-existent attachment " << attachment;

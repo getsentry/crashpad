@@ -20,6 +20,7 @@
 #include <map>
 #include <string>
 
+#include "base/synchronization/lock.h"
 #include "handler/user_stream_data_source.h"
 #include "util/misc/uuid.h"
 #include "util/win/exception_handler_server.h"
@@ -97,6 +98,7 @@ class CrashReportExceptionHandler final
   CrashReportDatabase* database_;  // weak
   CrashReportUploadThread* upload_thread_;  // weak
   const std::map<std::string, std::string>* process_annotations_;  // weak
+  base::Lock attachments_lock_;
   std::vector<base::FilePath> attachments_;
   const base::FilePath* screenshot_;  // weak
   const bool wait_for_upload_;
