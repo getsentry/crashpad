@@ -37,7 +37,7 @@ namespace crashpad {
 
 namespace {
 
-base::Lock& AttachmentWriteLock() {
+base::Lock& AttachmentFileLock() {
   static base::Lock lock;
   return lock;
 }
@@ -133,24 +133,27 @@ unsigned int CrashReportExceptionHandler::ExceptionHandlerServerException(
       return termination_code;
     }
 
-    for (const auto& attachment : attachments_) {
-      FileReader file_reader;
-      if (!file_reader.Open(attachment)) {
-        LOG(ERROR) << "attachment " << attachment
-                   << " couldn't be opened, skipping";
-        continue;
-      }
+    {
+      base::AutoLock scoped_lock(AttachmentFileLock());
+      for (const auto& attachment : attachments_) {
+        FileReader file_reader;
+        if (!file_reader.Open(attachment)) {
+          LOG(ERROR) << "attachment " << attachment
+                     << " couldn't be opened, skipping";
+          continue;
+        }
 
-      base::FilePath filename = attachment.BaseName();
-      FileWriter* file_writer =
-          new_report->AddAttachment(base::WideToUTF8(filename.value()));
-      if (file_writer == nullptr) {
-        LOG(ERROR) << "attachment " << filename
-                   << " couldn't be created, skipping";
-        continue;
-      }
+        base::FilePath filename = attachment.BaseName();
+        FileWriter* file_writer =
+            new_report->AddAttachment(base::WideToUTF8(filename.value()));
+        if (file_writer == nullptr) {
+          LOG(ERROR) << "attachment " << filename
+                     << " couldn't be created, skipping";
+          continue;
+        }
 
-      CopyFileContent(&file_reader, file_writer);
+        CopyFileContent(&file_reader, file_writer);
+      }
     }
 
     if (screenshot_ && !screenshot_->empty()) {
@@ -172,7 +175,10 @@ unsigned int CrashReportExceptionHandler::ExceptionHandlerServerException(
     if (has_crash_reporter) {
       CrashReportDatabase::Envelope envelope(new_report->ReportID());
       if (envelope.Initialize(*crash_envelope_)) {
-        envelope.AddAttachments(attachments_);
+        {
+          base::AutoLock scoped_lock(AttachmentFileLock());
+          envelope.AddAttachments(attachments_);
+        }
         if (auto reader = new_report->Reader()) {
           envelope.AddMinidump(reader);
         }
@@ -219,7 +225,7 @@ void CrashReportExceptionHandler::ExceptionHandlerServerAttachmentAdded(
 
 void CrashReportExceptionHandler::ExceptionHandlerServerAttachmentWritten(
     const base::FilePath& attachment, const std::string& data) {
-  base::AutoLock scoped_lock(AttachmentWriteLock());
+  base::AutoLock scoped_lock(AttachmentFileLock());
   FileWriter writer;
   if (!writer.Open(attachment,
                    FileWriteMode::kTruncateOrCreate,
@@ -232,7 +238,7 @@ void CrashReportExceptionHandler::ExceptionHandlerServerAttachmentWritten(
 
 void CrashReportExceptionHandler::ExceptionHandlerServerAttachmentAppended(
     const base::FilePath& attachment, const std::string& data) {
-  base::AutoLock scoped_lock(AttachmentWriteLock());
+  base::AutoLock scoped_lock(AttachmentFileLock());
   FileWriter writer;
   if (!writer.Open(attachment,
                    FileWriteMode::kReuseOrCreate,
