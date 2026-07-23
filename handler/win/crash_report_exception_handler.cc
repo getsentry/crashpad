@@ -165,15 +165,19 @@ unsigned int CrashReportExceptionHandler::ExceptionHandlerServerException(
                               crash_envelope_ && !crash_envelope_->empty();
     if (has_crash_reporter) {
       CrashReportDatabase::Envelope envelope(new_report->ReportID());
-      if (envelope.Initialize(*crash_envelope_)) {
-        {
-          base::AutoLock scoped_lock(attachments_lock_);
+      {
+        base::AutoLock scoped_lock(attachments_lock_);
+        if (envelope.Initialize(*crash_envelope_)) {
           envelope.AddAttachments(attachments_);
+          if (auto reader = new_report->Reader()) {
+            envelope.AddMinidump(reader);
+          }
+          envelope.Finish();
+        } else {
+          has_crash_reporter = false;
         }
-        if (auto reader = new_report->Reader()) {
-          envelope.AddMinidump(reader);
-        }
-        envelope.Finish();
+      }
+      if (has_crash_reporter) {
         database_->LaunchCrashReporter(*crash_reporter_, *crash_envelope_);
       }
     }
