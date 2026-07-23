@@ -493,7 +493,10 @@ static void HandleAddAttachmentV2(
   ServerToClientMessage response = {};
   service_context.delegate()->ExceptionHandlerServerAttachmentAdded(
       base::FilePath(std::wstring(path_buffer.data())));
-  LoggingWriteFile(service_context.pipe(), &response, sizeof(response));
+  if (LoggingWriteFile(service_context.pipe(), &response, sizeof(response)) &&
+      !FlushFileBuffers(service_context.pipe())) {
+    PLOG(ERROR) << "FlushFileBuffers";
+  }
 }
 
 static void HandleRemoveAttachmentV2(
@@ -525,7 +528,10 @@ static void HandleRemoveAttachmentV2(
   ServerToClientMessage response = {};
   service_context.delegate()->ExceptionHandlerServerAttachmentRemoved(
       base::FilePath(std::wstring(path_buffer.data())));
-  LoggingWriteFile(service_context.pipe(), &response, sizeof(response));
+  if (LoggingWriteFile(service_context.pipe(), &response, sizeof(response)) &&
+      !FlushFileBuffers(service_context.pipe())) {
+    PLOG(ERROR) << "FlushFileBuffers";
+  }
 }
 
 static bool ReadAttachment(
