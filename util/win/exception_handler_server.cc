@@ -464,6 +464,15 @@ static bool RuntimeMessageOriginIsOwner(
   return true;
 }
 
+static void WriteResponse(
+    const internal::PipeServiceContext& service_context,
+    const ServerToClientMessage& response = {}) {
+  if (LoggingWriteFile(service_context.pipe(), &response, sizeof(response)) &&
+      !FlushFileBuffers(service_context.pipe())) {
+    PLOG(ERROR) << "FlushFileBuffers";
+  }
+}
+
 static void HandleAddAttachmentV2(
     const internal::PipeServiceContext& service_context,
     const ClientToServerMessage& message) {
@@ -490,13 +499,9 @@ static void HandleAddAttachmentV2(
 
   path_buffer[path_buffer.size() - 1] = L'\0';
 
-  ServerToClientMessage response = {};
   service_context.delegate()->ExceptionHandlerServerAttachmentAdded(
       base::FilePath(std::wstring(path_buffer.data())));
-  if (LoggingWriteFile(service_context.pipe(), &response, sizeof(response)) &&
-      !FlushFileBuffers(service_context.pipe())) {
-    PLOG(ERROR) << "FlushFileBuffers";
-  }
+  WriteResponse(service_context);
 }
 
 static void HandleRemoveAttachmentV2(
@@ -525,13 +530,9 @@ static void HandleRemoveAttachmentV2(
 
   path_buffer[path_buffer.size() - 1] = L'\0';
 
-  ServerToClientMessage response = {};
   service_context.delegate()->ExceptionHandlerServerAttachmentRemoved(
       base::FilePath(std::wstring(path_buffer.data())));
-  if (LoggingWriteFile(service_context.pipe(), &response, sizeof(response)) &&
-      !FlushFileBuffers(service_context.pipe())) {
-    PLOG(ERROR) << "FlushFileBuffers";
-  }
+  WriteResponse(service_context);
 }
 
 static bool ReadAttachment(
@@ -598,10 +599,7 @@ static void HandleWriteAttachment(
   // Acknowledge IPC payload acceptance before disk I/O. This message exists to
   // offload potentially slow disk I/O from the client; waiting for the file
   // write would make the client block on the work this API is meant to avoid.
-  ServerToClientMessage response = {};
-  if (!LoggingWriteFile(service_context.pipe(), &response, sizeof(response))) {
-    return;
-  }
+  WriteResponse(service_context);
   service_context.delegate()->ExceptionHandlerServerAttachmentWritten(
       attachment, payload);
 }
@@ -619,10 +617,7 @@ static void HandleAppendAttachment(
   // Acknowledge IPC payload acceptance before disk I/O. This message exists to
   // offload potentially slow disk I/O from the client; waiting for the file
   // append would make the client block on the work this API is meant to avoid.
-  ServerToClientMessage response = {};
-  if (!LoggingWriteFile(service_context.pipe(), &response, sizeof(response))) {
-    return;
-  }
+  WriteResponse(service_context);
   service_context.delegate()->ExceptionHandlerServerAttachmentAppended(
       attachment, payload);
 }
