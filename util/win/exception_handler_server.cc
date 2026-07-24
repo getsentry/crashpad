@@ -478,7 +478,8 @@ static void HandleAddAttachmentV2(
     const ClientToServerMessage& message) {
   const uint32_t path_length_bytes = message.attachment_v2.path_length_bytes;
 
-  if (path_length_bytes == 0 || path_length_bytes > kMaxPathBytes) {
+  if (path_length_bytes <= sizeof(wchar_t) ||
+      path_length_bytes > kMaxPathBytes) {
     LOG(ERROR) << "Invalid path length: " << path_length_bytes;
     return;
   }
@@ -509,7 +510,8 @@ static void HandleRemoveAttachmentV2(
     const ClientToServerMessage& message) {
   const uint32_t path_length_bytes = message.attachment_v2.path_length_bytes;
 
-  if (path_length_bytes == 0 || path_length_bytes > kMaxPathBytes) {
+  if (path_length_bytes <= sizeof(wchar_t) ||
+      path_length_bytes > kMaxPathBytes) {
     LOG(ERROR) << "Invalid path length: " << path_length_bytes;
     return;
   }
@@ -545,7 +547,8 @@ static bool ReadAttachment(
   const uint32_t payload_length_bytes =
       message.attachment_write.payload_length_bytes;
 
-  if (path_length_bytes == 0 || path_length_bytes > kMaxPathBytes ||
+  if (path_length_bytes <= sizeof(wchar_t) ||
+      path_length_bytes > kMaxPathBytes ||
       path_length_bytes % sizeof(wchar_t) != 0) {
     LOG(ERROR) << "Invalid path length: " << path_length_bytes;
     return false;
