@@ -1216,19 +1216,107 @@ void CrashpadClient::SetFirstChanceExceptionHandler(
 }
 
 void CrashpadClient::AddAttachment(const base::FilePath& attachment) {
+  const size_t path_length_bytes =
+      (attachment.value().length() + 1) * sizeof(wchar_t);
+  if (path_length_bytes > kMaxPathBytes) {
+    LOG(ERROR) << "Path too long: " << path_length_bytes << " bytes";
+    return;
+  }
+
+  ClientToServerMessage message = {};
+  message.type = ClientToServerMessage::kAddAttachmentV2;
+  message.attachment_v2.path_length_bytes =
+      static_cast<uint32_t>(path_length_bytes);
+
   ServerToClientMessage response = {};
-  SendAttachmentToCrashHandlerServer(ipc_pipe_,
-                                     ClientToServerMessage::kAddAttachmentV2,
-                                     attachment.value(),
-                                     &response);
+  SendPayloadToCrashHandlerServer(ipc_pipe_,
+                                  message,
+                                  base::as_bytes(base::make_span(
+                                      attachment.value().c_str(),
+                                      path_length_bytes / sizeof(wchar_t))),
+                                  {},
+                                  &response);
+}
+
+bool CrashpadClient::WriteAttachment(const base::FilePath& attachment,
+                                     base::span<const uint8_t> data) {
+  const size_t path_length_bytes =
+      (attachment.value().length() + 1) * sizeof(wchar_t);
+  if (path_length_bytes > kMaxPathBytes ||
+      data.size() > kMaxAttachmentPayloadBytes ||
+      data.size() > UINT32_MAX - path_length_bytes) {
+    LOG(ERROR) << "attachment content too large";
+    return false;
+  }
+
+  ClientToServerMessage message = {};
+  message.type = ClientToServerMessage::kWriteAttachment;
+  message.attachment_write.path_length_bytes =
+      static_cast<uint32_t>(path_length_bytes);
+  message.attachment_write.payload_length_bytes =
+      static_cast<uint32_t>(data.size());
+
+  ServerToClientMessage response = {};
+  return SendPayloadToCrashHandlerServer(ipc_pipe_,
+                                         message,
+                                         base::as_bytes(base::make_span(
+                                             attachment.value().c_str(),
+                                             path_length_bytes
+                                                 / sizeof(wchar_t))),
+                                         data,
+                                         &response);
+}
+
+bool CrashpadClient::AppendAttachment(const base::FilePath& attachment,
+                                      base::span<const uint8_t> data) {
+  const size_t path_length_bytes =
+      (attachment.value().length() + 1) * sizeof(wchar_t);
+  if (path_length_bytes > kMaxPathBytes ||
+      data.size() > kMaxAttachmentPayloadBytes ||
+      data.size() > UINT32_MAX - path_length_bytes) {
+    LOG(ERROR) << "attachment content too large";
+    return false;
+  }
+
+  ClientToServerMessage message = {};
+  message.type = ClientToServerMessage::kAppendAttachment;
+  message.attachment_write.path_length_bytes =
+      static_cast<uint32_t>(path_length_bytes);
+  message.attachment_write.payload_length_bytes =
+      static_cast<uint32_t>(data.size());
+
+  ServerToClientMessage response = {};
+  return SendPayloadToCrashHandlerServer(ipc_pipe_,
+                                         message,
+                                         base::as_bytes(base::make_span(
+                                             attachment.value().c_str(),
+                                             path_length_bytes
+                                                 / sizeof(wchar_t))),
+                                         data,
+                                         &response);
 }
 
 void CrashpadClient::RemoveAttachment(const base::FilePath& attachment) {
+  const size_t path_length_bytes =
+      (attachment.value().length() + 1) * sizeof(wchar_t);
+  if (path_length_bytes > kMaxPathBytes) {
+    LOG(ERROR) << "Path too long: " << path_length_bytes << " bytes";
+    return;
+  }
+
+  ClientToServerMessage message = {};
+  message.type = ClientToServerMessage::kRemoveAttachmentV2;
+  message.attachment_v2.path_length_bytes =
+      static_cast<uint32_t>(path_length_bytes);
+
   ServerToClientMessage response = {};
-  SendAttachmentToCrashHandlerServer(ipc_pipe_,
-                                     ClientToServerMessage::kRemoveAttachmentV2,
-                                     attachment.value(),
-                                     &response);
+  SendPayloadToCrashHandlerServer(ipc_pipe_,
+                                  message,
+                                  base::as_bytes(base::make_span(
+                                      attachment.value().c_str(),
+                                      path_length_bytes / sizeof(wchar_t))),
+                                  {},
+                                  &response);
 }
 
 void CrashpadClient::RequestRetry() {

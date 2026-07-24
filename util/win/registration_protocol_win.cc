@@ -23,6 +23,7 @@
 
 #include "base/check.h"
 #include "base/logging.h"
+#include "base/numerics/safe_conversions.h"
 #include "util/win/exception_handler_server.h"
 #include "util/win/loader_lock.h"
 #include "util/win/scoped_handle.h"
@@ -141,30 +142,12 @@ bool SendToCrashHandlerServer(const std::wstring& pipe_name,
   }
 }
 
-bool SendAttachmentToCrashHandlerServer(
+bool SendPayloadToCrashHandlerServer(
     const std::wstring& pipe_name,
-    ClientToServerMessage::Type message_type,
-    const std::wstring& path,
+    const ClientToServerMessage& message,
+    base::span<const uint8_t> head,
+    base::span<const uint8_t> tail,
     ServerToClientMessage* response) {
-  if (message_type != ClientToServerMessage::kAddAttachmentV2 &&
-      message_type != ClientToServerMessage::kRemoveAttachmentV2) {
-    LOG(ERROR) << "Invalid message type for attachment: " << message_type;
-    return false;
-  }
-
-  const size_t path_length_bytes = (path.length() + 1) * sizeof(wchar_t);
-
-  if (path_length_bytes > kMaxPathBytes) {
-    LOG(ERROR) << "Path too long: " << path_length_bytes << " bytes";
-    return false;
-  }
-
-  // Build the message header.
-  ClientToServerMessage message = {};
-  message.type = message_type;
-  message.attachment_v2.path_length_bytes =
-      static_cast<uint32_t>(path_length_bytes);
-
   // Retry CreateFile() in a loop (follows the logic in
   // SendToCrashHandlerServer).
   for (;;) {
@@ -201,9 +184,17 @@ bool SendAttachmentToCrashHandlerServer(
       return false;
     }
 
-    if (!WriteFile(
-            pipe.get(), path.c_str(), static_cast<DWORD>(path_length_bytes))) {
-      PLOG(ERROR) << "WriteFile (path)";
+    if (!head.empty() &&
+        !WriteFile(
+            pipe.get(), head.data(), base::checked_cast<DWORD>(head.size()))) {
+      PLOG(ERROR) << "WriteFile (payload head)";
+      return false;
+    }
+
+    if (!tail.empty() &&
+        !WriteFile(
+            pipe.get(), tail.data(), base::checked_cast<DWORD>(tail.size()))) {
+      PLOG(ERROR) << "WriteFile (payload tail)";
       return false;
     }
 

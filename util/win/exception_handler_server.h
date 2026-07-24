@@ -65,6 +65,16 @@ class ExceptionHandlerServer {
     virtual void ExceptionHandlerServerAttachmentAdded(
         const base::FilePath& attachment) = 0;
 
+    //! \brief Called when the server has received a request to write an
+    //! attachment's contents.
+    virtual void ExceptionHandlerServerAttachmentWritten(
+        const base::FilePath& attachment, const std::string& data) = 0;
+
+    //! \brief Called when the server has received a request to append to an
+    //! attachment's contents.
+    virtual void ExceptionHandlerServerAttachmentAppended(
+        const base::FilePath& attachment, const std::string& data) = 0;
+
     //! \brief Called when the server has received a request to remove an
     //! attachment.
     //!

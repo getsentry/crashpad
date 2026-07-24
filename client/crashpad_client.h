@@ -23,6 +23,7 @@
 
 #include <stdint.h>
 
+#include "base/containers/span.h"
 #include "base/files/file_path.h"
 #include "build/build_config.h"
 #include "util/file/file_io.h"
@@ -864,6 +865,14 @@ class CrashpadClient {
   //!
   //! \param[in] attachment The path to the file to be added.
   void AddAttachment(const base::FilePath& attachment);
+
+  //! \brief Writes content to an attachment file.
+  bool WriteAttachment(
+      const base::FilePath& attachment, base::span<const uint8_t> data);
+
+  //! \brief Appends content to an attachment file.
+  bool AppendAttachment(
+      const base::FilePath& attachment, base::span<const uint8_t> data);
 
   //! \brief Removes a file from the list of files to be attached to the crash
   //!     report.

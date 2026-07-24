@@ -132,9 +132,26 @@ struct AttachmentRequestV2 {
   uint32_t path_length_bytes;
 };
 
+//! \brief A variable-length attachment write request header.
+//!
+//! For kWriteAttachment and kAppendAttachment, the message consists of a
+//! ClientToServerMessage with this header in the union, followed by
+//! path_length_bytes of wchar_t data containing the null-terminated path and
+//! payload_length_bytes of attachment content.
+struct AttachmentWriteRequest {
+  //! \brief Length of the path in bytes, including null terminator.
+  uint32_t path_length_bytes;
+
+  //! \brief Length of the attachment content in bytes.
+  uint32_t payload_length_bytes;
+};
+
 //! follow the maximum path length documented here:
 //! https://learn.microsoft.com/en-us/windows/win32/fileio/maximum-file-path-limitation
 constexpr uint32_t kMaxPathBytes = 32768 * sizeof(wchar_t);
+
+//! \brief Maximum variable-length attachment content payload, in bytes.
+constexpr uint32_t kMaxAttachmentPayloadBytes = 100 * 1024 * 1024;
 
 //! \brief The message passed from client to server by
 //!     SendToCrashHandlerServer().
@@ -167,6 +184,12 @@ struct ClientToServerMessage {
     //! \brief Requests that the server retry pending report uploads. No
     //!     additional payload.
     kRequestRetry,
+
+    //! \brief For AttachmentWriteRequest.
+    kWriteAttachment,
+
+    //! \brief For AttachmentWriteRequest.
+    kAppendAttachment,
   } type;
 
   union {
@@ -174,6 +197,7 @@ struct ClientToServerMessage {
     ShutdownRequest shutdown;
     AttachmentRequest attachment;
     AttachmentRequestV2 attachment_v2;
+    AttachmentWriteRequest attachment_write;
   };
 };
 
