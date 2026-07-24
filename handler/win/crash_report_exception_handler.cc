@@ -49,7 +49,7 @@ CrashReportExceptionHandler::CrashReportExceptionHandler(
     : database_(database),
       upload_thread_(upload_thread),
       process_annotations_(process_annotations),
-      startup_attachments_(attachments),
+      startup_attachments_(*attachments),
       screenshot_(screenshot),
       wait_for_upload_(wait_for_upload),
       crash_reporter_(crash_reporter),
@@ -126,7 +126,7 @@ unsigned int CrashReportExceptionHandler::ExceptionHandlerServerException(
 
     {
       base::AutoLock scoped_lock(attachments_lock_);
-      std::vector<base::FilePath> all_attachments(*startup_attachments_);
+      std::vector<base::FilePath> all_attachments(startup_attachments_);
       all_attachments.insert(all_attachments.end(),
                              user_attachments_.begin(),
                              user_attachments_.end());
@@ -173,7 +173,7 @@ unsigned int CrashReportExceptionHandler::ExceptionHandlerServerException(
       {
         base::AutoLock scoped_lock(attachments_lock_);
         if (envelope.Initialize(*crash_envelope_)) {
-          std::vector<base::FilePath> attachments(*startup_attachments_);
+          std::vector<base::FilePath> attachments(startup_attachments_);
           attachments.insert(attachments.end(),
                              user_attachments_.begin(),
                              user_attachments_.end());
@@ -229,10 +229,10 @@ void CrashReportExceptionHandler::ExceptionHandlerServerAttachmentAdded(
 
 bool CrashReportExceptionHandler::HasStartupAttachment(
     const base::FilePath& attachment) const {
-  return std::find(startup_attachments_->begin(),
-                   startup_attachments_->end(),
+  return std::find(startup_attachments_.begin(),
+                   startup_attachments_.end(),
                    attachment) !=
-             startup_attachments_->end();
+         startup_attachments_.end();
 }
 
 bool CrashReportExceptionHandler::HasUserAttachment(
@@ -298,13 +298,21 @@ void CrashReportExceptionHandler::ExceptionHandlerServerAttachmentAppended(
 void CrashReportExceptionHandler::ExceptionHandlerServerAttachmentRemoved(
     const base::FilePath& attachment) {
   base::AutoLock scoped_lock(attachments_lock_);
-  auto it = std::find(
-      user_attachments_.begin(), user_attachments_.end(), attachment);
-  if (it == user_attachments_.end()) {
-    LOG(WARNING) << "ignoring non-existent attachment " << attachment;
+  auto startup_it = std::find(
+      startup_attachments_.begin(), startup_attachments_.end(), attachment);
+  if (startup_it != startup_attachments_.end()) {
+    startup_attachments_.erase(startup_it);
     return;
   }
-  user_attachments_.erase(it);
+
+  auto user_it = std::find(
+      user_attachments_.begin(), user_attachments_.end(), attachment);
+  if (user_it != user_attachments_.end()) {
+    user_attachments_.erase(user_it);
+    return;
+  }
+
+  LOG(WARNING) << "ignoring non-existent attachment " << attachment;
 }
 
 void CrashReportExceptionHandler::ExceptionHandlerServerRetryRequested() {

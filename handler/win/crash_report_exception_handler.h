@@ -103,7 +103,7 @@ class CrashReportExceptionHandler final
   CrashReportUploadThread* upload_thread_;  // weak
   const std::map<std::string, std::string>* process_annotations_;  // weak
   base::Lock attachments_lock_;
-  const std::vector<base::FilePath>* startup_attachments_;  // weak
+  std::vector<base::FilePath> startup_attachments_;
   std::vector<base::FilePath> user_attachments_;
   const base::FilePath* screenshot_;  // weak
   const bool wait_for_upload_;
