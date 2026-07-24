@@ -560,29 +560,24 @@ static bool ReadAttachment(
     return false;
   }
 
-  const uint32_t request_payload_length_bytes =
-      path_length_bytes + payload_length_bytes;
-  std::string request_payload(request_payload_length_bytes, '\0');
+  std::wstring path(path_length_bytes / sizeof(wchar_t), L'\0');
   if (!LoggingReadFileExactly(
-          service_context.pipe(),
-          &request_payload[0],
-          request_payload_length_bytes)) {
-    LOG(ERROR) << "Failed to read attachment write";
+          service_context.pipe(), &path[0], path_length_bytes)) {
+    LOG(ERROR) << "Failed to read attachment path";
+    return false;
+  }
+  path.resize(path.size() - 1);
+
+  std::string data(payload_length_bytes, '\0');
+  if (payload_length_bytes > 0 &&
+      !LoggingReadFileExactly(
+          service_context.pipe(), &data[0], payload_length_bytes)) {
+    LOG(ERROR) << "Failed to read attachment payload";
     return false;
   }
 
-  const size_t path_length = path_length_bytes / sizeof(wchar_t) - 1;
-  std::wstring path(path_length, L'\0');
-  if (path_length > 0) {
-    memcpy(&path[0],
-           request_payload.data(),
-           path_length_bytes - sizeof(wchar_t));
-  }
-
   *attachment = base::FilePath(path);
-  *payload =
-      std::string(request_payload.data() + path_length_bytes,
-                  payload_length_bytes);
+  *payload = std::move(data);
   return true;
 }
 

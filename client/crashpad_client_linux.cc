@@ -835,7 +835,7 @@ void CrashpadClient::AddAttachment(const base::FilePath& attachment) {
 }
 
 bool CrashpadClient::WriteAttachment(const base::FilePath& attachment,
-                                     const std::string& data) {
+                                     base::span<const uint8_t> data) {
   FileWriter writer;
   if (!writer.Open(attachment,
                    FileWriteMode::kTruncateOrCreate,
@@ -848,7 +848,7 @@ bool CrashpadClient::WriteAttachment(const base::FilePath& attachment,
 }
 
 bool CrashpadClient::AppendAttachment(const base::FilePath& attachment,
-                                      const std::string& data) {
+                                      base::span<const uint8_t> data) {
   FileWriter writer;
   if (!writer.Open(attachment,
                    FileWriteMode::kReuseOrCreate,

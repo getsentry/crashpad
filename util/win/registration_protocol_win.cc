@@ -23,6 +23,7 @@
 
 #include "base/check.h"
 #include "base/logging.h"
+#include "base/numerics/safe_conversions.h"
 #include "util/win/exception_handler_server.h"
 #include "util/win/loader_lock.h"
 #include "util/win/scoped_handle.h"
@@ -144,8 +145,8 @@ bool SendToCrashHandlerServer(const std::wstring& pipe_name,
 bool SendPayloadToCrashHandlerServer(
     const std::wstring& pipe_name,
     const ClientToServerMessage& message,
-    const void* payload,
-    uint32_t payload_size,
+    base::span<const uint8_t> head,
+    base::span<const uint8_t> tail,
     ServerToClientMessage* response) {
   // Retry CreateFile() in a loop (follows the logic in
   // SendToCrashHandlerServer).
@@ -183,9 +184,17 @@ bool SendPayloadToCrashHandlerServer(
       return false;
     }
 
-    if (payload_size > 0 &&
-        !WriteFile(pipe.get(), payload, static_cast<DWORD>(payload_size))) {
-      PLOG(ERROR) << "WriteFile (payload)";
+    if (!head.empty() &&
+        !WriteFile(
+            pipe.get(), head.data(), base::checked_cast<DWORD>(head.size()))) {
+      PLOG(ERROR) << "WriteFile (payload head)";
+      return false;
+    }
+
+    if (!tail.empty() &&
+        !WriteFile(
+            pipe.get(), tail.data(), base::checked_cast<DWORD>(tail.size()))) {
+      PLOG(ERROR) << "WriteFile (payload tail)";
       return false;
     }
 

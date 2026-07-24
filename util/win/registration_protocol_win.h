@@ -20,6 +20,7 @@
 
 #include <string>
 
+#include "base/containers/span.h"
 #include "util/win/address_types.h"
 #include "util/win/registration_protocol_win_structs.h"
 
@@ -44,16 +45,16 @@ bool SendToCrashHandlerServer(const std::wstring& pipe_name,
 //!
 //! \param[in] pipe_name The name of the pipe to connect to.
 //! \param[in] message The message header to send.
-//! \param[in] payload The payload bytes to send after \a message.
-//! \param[in] payload_size The size of \a payload.
+//! \param[in] head The first payload bytes to send after \a message.
+//! \param[in] tail Payload bytes to send after \a head.
 //! \param[out] response The server's response.
 //!
 //! \return `true` on success, `false` on failure with a message logged.
 bool SendPayloadToCrashHandlerServer(
     const std::wstring& pipe_name,
     const ClientToServerMessage& message,
-    const void* payload,
-    uint32_t payload_size,
+    base::span<const uint8_t> head,
+    base::span<const uint8_t> tail,
     ServerToClientMessage* response);
 
 //! \brief Wraps CreateNamedPipe() to create a single named pipe instance.

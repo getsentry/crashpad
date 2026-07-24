@@ -1231,13 +1231,15 @@ void CrashpadClient::AddAttachment(const base::FilePath& attachment) {
   ServerToClientMessage response = {};
   SendPayloadToCrashHandlerServer(ipc_pipe_,
                                   message,
-                                  attachment.value().c_str(),
-                                  static_cast<uint32_t>(path_length_bytes),
+                                  base::as_bytes(base::make_span(
+                                      attachment.value().c_str(),
+                                      path_length_bytes / sizeof(wchar_t))),
+                                  {},
                                   &response);
 }
 
 bool CrashpadClient::WriteAttachment(const base::FilePath& attachment,
-                                     const std::string& data) {
+                                     base::span<const uint8_t> data) {
   const size_t path_length_bytes =
       (attachment.value().length() + 1) * sizeof(wchar_t);
   if (path_length_bytes > kMaxPathBytes ||
@@ -1254,22 +1256,19 @@ bool CrashpadClient::WriteAttachment(const base::FilePath& attachment,
   message.attachment_write.payload_length_bytes =
       static_cast<uint32_t>(data.size());
 
-  std::string payload(path_length_bytes + data.size(), '\0');
-  memcpy(&payload[0], attachment.value().c_str(), path_length_bytes);
-  if (!data.empty()) {
-    memcpy(&payload[path_length_bytes], data.data(), data.size());
-  }
-
   ServerToClientMessage response = {};
   return SendPayloadToCrashHandlerServer(ipc_pipe_,
                                          message,
-                                         payload.data(),
-                                         static_cast<uint32_t>(payload.size()),
+                                         base::as_bytes(base::make_span(
+                                             attachment.value().c_str(),
+                                             path_length_bytes
+                                                 / sizeof(wchar_t))),
+                                         data,
                                          &response);
 }
 
 bool CrashpadClient::AppendAttachment(const base::FilePath& attachment,
-                                      const std::string& data) {
+                                      base::span<const uint8_t> data) {
   const size_t path_length_bytes =
       (attachment.value().length() + 1) * sizeof(wchar_t);
   if (path_length_bytes > kMaxPathBytes ||
@@ -1286,17 +1285,14 @@ bool CrashpadClient::AppendAttachment(const base::FilePath& attachment,
   message.attachment_write.payload_length_bytes =
       static_cast<uint32_t>(data.size());
 
-  std::string payload(path_length_bytes + data.size(), '\0');
-  memcpy(&payload[0], attachment.value().c_str(), path_length_bytes);
-  if (!data.empty()) {
-    memcpy(&payload[path_length_bytes], data.data(), data.size());
-  }
-
   ServerToClientMessage response = {};
   return SendPayloadToCrashHandlerServer(ipc_pipe_,
                                          message,
-                                         payload.data(),
-                                         static_cast<uint32_t>(payload.size()),
+                                         base::as_bytes(base::make_span(
+                                             attachment.value().c_str(),
+                                             path_length_bytes
+                                                 / sizeof(wchar_t))),
+                                         data,
                                          &response);
 }
 
@@ -1316,8 +1312,10 @@ void CrashpadClient::RemoveAttachment(const base::FilePath& attachment) {
   ServerToClientMessage response = {};
   SendPayloadToCrashHandlerServer(ipc_pipe_,
                                   message,
-                                  attachment.value().c_str(),
-                                  static_cast<uint32_t>(path_length_bytes),
+                                  base::as_bytes(base::make_span(
+                                      attachment.value().c_str(),
+                                      path_length_bytes / sizeof(wchar_t))),
+                                  {},
                                   &response);
 }
 
