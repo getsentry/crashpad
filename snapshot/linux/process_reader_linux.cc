@@ -204,6 +204,11 @@ void ProcessReaderLinux::Thread::InitializeStackFromSP(
   if (tid != reader->ProcessID() && tls_address > stack_region_address &&
       tls_address < stack_end) {
     stack_region_size = tls_address - stack_region_address;
+
+    // Truncating the length drops the static TLS block, which sits at the
+    // stack base end of the region, rather than any frame.
+    constexpr LinuxVMSize kMaxCapturedStackSize = 64 * 1024;
+    stack_region_size = std::min(stack_region_size, kMaxCapturedStackSize);
   }
 }
 
