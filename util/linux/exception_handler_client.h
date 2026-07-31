@@ -30,7 +30,11 @@ class ExceptionHandlerClient {
   //! \param[in] sock A socket connected to an ExceptionHandlerServer.
   //! \param[in] multiple_clients `true` if this socket may be used by multiple
   //!     clients.
-  ExceptionHandlerClient(int sock, bool multiple_clients);
+  //! \param[in] wait_for_report `true` to wait for the handler to finish with
+  //!     the report, rather than giving up after a short timeout.
+  ExceptionHandlerClient(int sock,
+                         bool multiple_clients,
+                         bool wait_for_report = false);
 
   ExceptionHandlerClient(const ExceptionHandlerClient&) = delete;
   ExceptionHandlerClient& operator=(const ExceptionHandlerClient&) = delete;
@@ -89,6 +93,7 @@ class ExceptionHandlerClient {
   pid_t ptracer_;
   bool can_set_ptracer_;
   bool multiple_clients_;
+  bool wait_for_report_;
 };
 
 }  // namespace crashpad

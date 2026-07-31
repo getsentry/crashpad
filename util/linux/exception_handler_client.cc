@@ -17,6 +17,7 @@
 #include <errno.h>
 #include <signal.h>
 #include <sys/prctl.h>
+#include <sys/socket.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -64,11 +65,14 @@ class ScopedSigprocmaskRestore {
 
 }  // namespace
 
-ExceptionHandlerClient::ExceptionHandlerClient(int sock, bool multiple_clients)
+ExceptionHandlerClient::ExceptionHandlerClient(int sock,
+                                               bool multiple_clients,
+                                               bool wait_for_report)
     : server_sock_(sock),
       ptracer_(-1),
       can_set_ptracer_(true),
-      multiple_clients_(multiple_clients) {}
+      multiple_clients_(multiple_clients),
+      wait_for_report_(wait_for_report) {}
 
 ExceptionHandlerClient::~ExceptionHandlerClient() = default;
 
@@ -134,15 +138,24 @@ int ExceptionHandlerClient::SignalCrashDump(
   }
 
   siginfo_t siginfo = {};
-  timespec timeout;
-  timeout.tv_sec = 5;
-  timeout.tv_nsec = 0;
-  if (HANDLE_EINTR(sys_sigtimedwait(&dump_done_sigset, &siginfo, &timeout)) <
-      0) {
-    return errno;
+  timespec timeout = {};
+  timeout.tv_sec = wait_for_report_ ? 1 : 5;
+  for (;;) {
+    if (HANDLE_EINTR(sys_sigtimedwait(&dump_done_sigset, &siginfo, &timeout)) >=
+        0) {
+      return 0;
+    }
+    if (errno != EAGAIN || !wait_for_report_) {
+      return errno;
+    }
+    // Only keep waiting while the handler is still there to signal us.
+    char peek;
+    ssize_t rv =
+        HANDLE_EINTR(recv(server_sock_, &peek, 1, MSG_PEEK | MSG_DONTWAIT));
+    if (rv == 0 || (rv < 0 && errno != EAGAIN)) {
+      return ESRCH;
+    }
   }
-
-  return 0;
 }
 
 int ExceptionHandlerClient::SendCrashDumpRequest(
