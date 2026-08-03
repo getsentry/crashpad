@@ -19,6 +19,7 @@
 #include <mach/mach.h>
 #include <pthread.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <unistd.h>
 
 #include <memory>
@@ -29,6 +30,7 @@
 #include "base/check_op.h"
 #include "base/logging.h"
 #include "base/strings/stringprintf.h"
+#include "util/file/file_writer.h"
 #include "util/mac/mac_util.h"
 #include "util/mach/bootstrap.h"
 #include "util/mach/child_port_handshake.h"
@@ -635,6 +637,33 @@ void CrashpadClient::AddAttachment(const base::FilePath& attachment) {
   SendClientToServerMessage(exception_port_.get(),
                             ClientToServerMessage::kAddAttachment,
                             attachment.value());
+}
+
+bool CrashpadClient::WriteAttachment(const base::FilePath& attachment,
+                                     base::span<const uint8_t> data) {
+  FileWriter writer;
+  if (!writer.Open(attachment,
+                   FileWriteMode::kTruncateOrCreate,
+                   FilePermissions::kOwnerOnly) ||
+      !writer.Write(data.data(), data.size())) {
+    LOG(ERROR) << "failed to write attachment " << attachment;
+    return false;
+  }
+  return true;
+}
+
+bool CrashpadClient::AppendAttachment(const base::FilePath& attachment,
+                                      base::span<const uint8_t> data) {
+  FileWriter writer;
+  if (!writer.Open(attachment,
+                   FileWriteMode::kReuseOrCreate,
+                   FilePermissions::kOwnerOnly) ||
+      writer.Seek(0, SEEK_END) < 0 ||
+      !writer.Write(data.data(), data.size())) {
+    LOG(ERROR) << "failed to write attachment " << attachment;
+    return false;
+  }
+  return true;
 }
 
 void CrashpadClient::RemoveAttachment(const base::FilePath& attachment) {

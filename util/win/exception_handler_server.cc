@@ -464,12 +464,22 @@ static bool RuntimeMessageOriginIsOwner(
   return true;
 }
 
+static void WriteResponse(
+    const internal::PipeServiceContext& service_context,
+    const ServerToClientMessage& response = {}) {
+  if (LoggingWriteFile(service_context.pipe(), &response, sizeof(response)) &&
+      !FlushFileBuffers(service_context.pipe())) {
+    PLOG(ERROR) << "FlushFileBuffers";
+  }
+}
+
 static void HandleAddAttachmentV2(
     const internal::PipeServiceContext& service_context,
     const ClientToServerMessage& message) {
   const uint32_t path_length_bytes = message.attachment_v2.path_length_bytes;
 
-  if (path_length_bytes == 0 || path_length_bytes > kMaxPathBytes) {
+  if (path_length_bytes <= sizeof(wchar_t) ||
+      path_length_bytes > kMaxPathBytes) {
     LOG(ERROR) << "Invalid path length: " << path_length_bytes;
     return;
   }
@@ -490,10 +500,9 @@ static void HandleAddAttachmentV2(
 
   path_buffer[path_buffer.size() - 1] = L'\0';
 
-  ServerToClientMessage response = {};
   service_context.delegate()->ExceptionHandlerServerAttachmentAdded(
       base::FilePath(std::wstring(path_buffer.data())));
-  LoggingWriteFile(service_context.pipe(), &response, sizeof(response));
+  WriteResponse(service_context);
 }
 
 static void HandleRemoveAttachmentV2(
@@ -501,7 +510,8 @@ static void HandleRemoveAttachmentV2(
     const ClientToServerMessage& message) {
   const uint32_t path_length_bytes = message.attachment_v2.path_length_bytes;
 
-  if (path_length_bytes == 0 || path_length_bytes > kMaxPathBytes) {
+  if (path_length_bytes <= sizeof(wchar_t) ||
+      path_length_bytes > kMaxPathBytes) {
     LOG(ERROR) << "Invalid path length: " << path_length_bytes;
     return;
   }
@@ -522,10 +532,92 @@ static void HandleRemoveAttachmentV2(
 
   path_buffer[path_buffer.size() - 1] = L'\0';
 
-  ServerToClientMessage response = {};
   service_context.delegate()->ExceptionHandlerServerAttachmentRemoved(
       base::FilePath(std::wstring(path_buffer.data())));
-  LoggingWriteFile(service_context.pipe(), &response, sizeof(response));
+  WriteResponse(service_context);
+}
+
+static bool ReadAttachment(
+    const internal::PipeServiceContext& service_context,
+    const ClientToServerMessage& message,
+    base::FilePath* attachment,
+    std::string* payload) {
+  const uint32_t path_length_bytes =
+      message.attachment_write.path_length_bytes;
+  const uint32_t payload_length_bytes =
+      message.attachment_write.payload_length_bytes;
+
+  if (path_length_bytes <= sizeof(wchar_t) ||
+      path_length_bytes > kMaxPathBytes ||
+      path_length_bytes % sizeof(wchar_t) != 0) {
+    LOG(ERROR) << "Invalid path length: " << path_length_bytes;
+    return false;
+  }
+  if (payload_length_bytes > kMaxAttachmentPayloadBytes) {
+    LOG(ERROR) << "Invalid attachment payload length: "
+               << payload_length_bytes;
+    return false;
+  }
+  if (payload_length_bytes > UINT32_MAX - path_length_bytes) {
+    LOG(ERROR) << "Invalid attachment write length";
+    return false;
+  }
+
+  std::wstring path(path_length_bytes / sizeof(wchar_t), L'\0');
+  if (!LoggingReadFileExactly(
+          service_context.pipe(), &path[0], path_length_bytes)) {
+    LOG(ERROR) << "Failed to read attachment path";
+    return false;
+  }
+  path.resize(path.size() - 1);
+
+  std::string data(payload_length_bytes, '\0');
+  if (payload_length_bytes > 0 &&
+      !LoggingReadFileExactly(
+          service_context.pipe(), &data[0], payload_length_bytes)) {
+    LOG(ERROR) << "Failed to read attachment payload";
+    return false;
+  }
+
+  *attachment = base::FilePath(path);
+  *payload = std::move(data);
+  return true;
+}
+
+static void HandleWriteAttachment(
+    const internal::PipeServiceContext& service_context,
+    const ClientToServerMessage& message) {
+  base::FilePath attachment;
+  std::string payload;
+  if (!ReadAttachment(
+          service_context, message, &attachment, &payload)) {
+    return;
+  }
+
+  // Acknowledge IPC payload acceptance before disk I/O. This message exists to
+  // offload potentially slow disk I/O from the client; waiting for the file
+  // write would make the client block on the work this API is meant to avoid.
+  WriteResponse(service_context);
+  service_context.delegate()->ExceptionHandlerServerAttachmentWritten(
+      attachment, payload);
+}
+
+static void HandleAppendAttachment(
+    const internal::PipeServiceContext& service_context,
+    const ClientToServerMessage& message) {
+  base::FilePath attachment;
+  std::string payload;
+  if (!ReadAttachment(
+          service_context, message, &attachment, &payload)) {
+    return;
+  }
+
+  // Acknowledge IPC payload acceptance before disk I/O. This message exists to
+  // offload potentially slow disk I/O from the client; waiting for the file
+  // append would make the client block on the work this API is meant to avoid.
+  WriteResponse(service_context);
+  service_context.delegate()->ExceptionHandlerServerAttachmentAppended(
+      attachment, payload);
 }
 
 // This function must be called with service_context.pipe() already connected to
@@ -608,6 +700,22 @@ bool ExceptionHandlerServer::ServiceClientConnection(
         return false;
       }
       HandleRemoveAttachmentV2(service_context, message);
+      return false;
+    }
+
+    case ClientToServerMessage::kWriteAttachment: {
+      if (!RuntimeMessageOriginIsOwner(service_context)) {
+        return false;
+      }
+      HandleWriteAttachment(service_context, message);
+      return false;
+    }
+
+    case ClientToServerMessage::kAppendAttachment: {
+      if (!RuntimeMessageOriginIsOwner(service_context)) {
+        return false;
+      }
+      HandleAppendAttachment(service_context, message);
       return false;
     }
 

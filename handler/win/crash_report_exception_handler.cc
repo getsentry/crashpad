@@ -18,6 +18,7 @@
 #include <utility>
 
 #include "base/strings/utf_string_conversions.h"
+#include "base/synchronization/lock.h"
 #include "client/crash_report_database.h"
 #include "client/settings.h"
 #include "handler/crash_report_upload_thread.h"
@@ -48,7 +49,7 @@ CrashReportExceptionHandler::CrashReportExceptionHandler(
     : database_(database),
       upload_thread_(upload_thread),
       process_annotations_(process_annotations),
-      attachments_(*attachments),
+      startup_attachments_(*attachments),
       screenshot_(screenshot),
       wait_for_upload_(wait_for_upload),
       crash_reporter_(crash_reporter),
@@ -123,24 +124,32 @@ unsigned int CrashReportExceptionHandler::ExceptionHandlerServerException(
       return termination_code;
     }
 
-    for (const auto& attachment : attachments_) {
-      FileReader file_reader;
-      if (!file_reader.Open(attachment)) {
-        LOG(ERROR) << "attachment " << attachment
-                   << " couldn't be opened, skipping";
-        continue;
-      }
+    {
+      base::AutoLock scoped_lock(attachments_lock_);
+      std::vector<base::FilePath> all_attachments(startup_attachments_);
+      all_attachments.insert(all_attachments.end(),
+                             user_attachments_.begin(),
+                             user_attachments_.end());
 
-      base::FilePath filename = attachment.BaseName();
-      FileWriter* file_writer =
-          new_report->AddAttachment(base::WideToUTF8(filename.value()));
-      if (file_writer == nullptr) {
-        LOG(ERROR) << "attachment " << filename
-                   << " couldn't be created, skipping";
-        continue;
-      }
+      for (const auto& attachment : all_attachments) {
+        FileReader file_reader;
+        if (!file_reader.Open(attachment)) {
+          LOG(ERROR) << "attachment " << attachment
+                     << " couldn't be opened, skipping";
+          continue;
+        }
 
-      CopyFileContent(&file_reader, file_writer);
+        base::FilePath filename = attachment.BaseName();
+        FileWriter* file_writer =
+            new_report->AddAttachment(base::WideToUTF8(filename.value()));
+        if (file_writer == nullptr) {
+          LOG(ERROR) << "attachment " << filename
+                     << " couldn't be created, skipping";
+          continue;
+        }
+
+        CopyFileContent(&file_reader, file_writer);
+      }
     }
 
     if (screenshot_ && !screenshot_->empty()) {
@@ -161,12 +170,23 @@ unsigned int CrashReportExceptionHandler::ExceptionHandlerServerException(
                               crash_envelope_ && !crash_envelope_->empty();
     if (has_crash_reporter) {
       CrashReportDatabase::Envelope envelope(new_report->ReportID());
-      if (envelope.Initialize(*crash_envelope_)) {
-        envelope.AddAttachments(attachments_);
-        if (auto reader = new_report->Reader()) {
-          envelope.AddMinidump(reader);
+      {
+        base::AutoLock scoped_lock(attachments_lock_);
+        if (envelope.Initialize(*crash_envelope_)) {
+          std::vector<base::FilePath> attachments(startup_attachments_);
+          attachments.insert(attachments.end(),
+                             user_attachments_.begin(),
+                             user_attachments_.end());
+          envelope.AddAttachments(attachments);
+          if (auto reader = new_report->Reader()) {
+            envelope.AddMinidump(reader);
+          }
+          envelope.Finish();
+        } else {
+          has_crash_reporter = false;
         }
-        envelope.Finish();
+      }
+      if (has_crash_reporter) {
         database_->LaunchCrashReporter(*crash_reporter_, *crash_envelope_);
       }
     }
@@ -199,22 +219,100 @@ unsigned int CrashReportExceptionHandler::ExceptionHandlerServerException(
 
 void CrashReportExceptionHandler::ExceptionHandlerServerAttachmentAdded(
     const base::FilePath& attachment) {
-  auto it = std::find(attachments_.begin(), attachments_.end(), attachment);
-  if (it != attachments_.end()) {
+  base::AutoLock scoped_lock(attachments_lock_);
+  if (HasStartupAttachment(attachment) || HasUserAttachment(attachment)) {
     LOG(WARNING) << "ignoring duplicate attachment " << attachment;
     return;
   }
-  attachments_.push_back(attachment);
+  user_attachments_.push_back(attachment);
+}
+
+bool CrashReportExceptionHandler::HasStartupAttachment(
+    const base::FilePath& attachment) const {
+  return std::find(startup_attachments_.begin(),
+                   startup_attachments_.end(),
+                   attachment) !=
+         startup_attachments_.end();
+}
+
+bool CrashReportExceptionHandler::HasUserAttachment(
+    const base::FilePath& attachment) const {
+  return std::find(user_attachments_.begin(),
+                   user_attachments_.end(),
+                   attachment) != user_attachments_.end();
+}
+
+// Restrict privileged handler-side attachment file writes to the external
+// crash report path and startup attachments (`__sentry-xxx`).
+bool CrashReportExceptionHandler::IsWritableAttachment(
+    const base::FilePath& attachment) const {
+  if (crash_envelope_ && !crash_envelope_->empty() &&
+      attachment == *crash_envelope_) {
+    return true;
+  }
+
+  return HasStartupAttachment(attachment) &&
+         (CrashReportDatabase::Envelope::IsEvent(attachment) ||
+          CrashReportDatabase::Envelope::IsBreadcrumb(attachment));
+}
+
+void CrashReportExceptionHandler::ExceptionHandlerServerAttachmentWritten(
+    const base::FilePath& attachment,
+    const std::string& data) {
+  base::AutoLock scoped_lock(attachments_lock_);
+  if (!IsWritableAttachment(attachment)) {
+    LOG(WARNING) << "ignoring unwritable attachment " << attachment;
+    return;
+  }
+
+  FileWriter writer;
+  if (!writer.Open(attachment,
+                   FileWriteMode::kTruncateOrCreate,
+                   FilePermissions::kOwnerOnly) ||
+      !writer.Write(data.data(), data.size())) {
+    LOG(ERROR) << "failed to write attachment " << attachment;
+    return;
+  }
+}
+
+void CrashReportExceptionHandler::ExceptionHandlerServerAttachmentAppended(
+    const base::FilePath& attachment,
+    const std::string& data) {
+  base::AutoLock scoped_lock(attachments_lock_);
+  if (!IsWritableAttachment(attachment)) {
+    LOG(WARNING) << "ignoring unwritable attachment " << attachment;
+    return;
+  }
+
+  FileWriter writer;
+  if (!writer.Open(attachment,
+                   FileWriteMode::kReuseOrCreate,
+                   FilePermissions::kOwnerOnly) ||
+      writer.Seek(0, SEEK_END) < 0 ||
+      !writer.Write(data.data(), data.size())) {
+    LOG(ERROR) << "failed to write attachment " << attachment;
+    return;
+  }
 }
 
 void CrashReportExceptionHandler::ExceptionHandlerServerAttachmentRemoved(
     const base::FilePath& attachment) {
-  auto it = std::find(attachments_.begin(), attachments_.end(), attachment);
-  if (it == attachments_.end()) {
-    LOG(WARNING) << "ignoring non-existent attachment " << attachment;
+  base::AutoLock scoped_lock(attachments_lock_);
+  auto startup_it = std::find(
+      startup_attachments_.begin(), startup_attachments_.end(), attachment);
+  if (startup_it != startup_attachments_.end()) {
+    startup_attachments_.erase(startup_it);
     return;
   }
-  attachments_.erase(it);
+
+  auto user_it = std::find(
+      user_attachments_.begin(), user_attachments_.end(), attachment);
+  if (user_it != user_attachments_.end()) {
+    user_attachments_.erase(user_it);
+    return;
+  }
+
+  LOG(WARNING) << "ignoring non-existent attachment " << attachment;
 }
 
 void CrashReportExceptionHandler::ExceptionHandlerServerRetryRequested() {

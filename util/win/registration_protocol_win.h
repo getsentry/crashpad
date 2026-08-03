@@ -20,6 +20,7 @@
 
 #include <string>
 
+#include "base/containers/span.h"
 #include "util/win/address_types.h"
 #include "util/win/registration_protocol_win_structs.h"
 
@@ -36,22 +37,24 @@ bool SendToCrashHandlerServer(const std::wstring& pipe_name,
                               const ClientToServerMessage& message,
                               ServerToClientMessage* response);
 
-//! \brief Connect over the given \a pipe_name, passing a variable-length
-//!     attachment message to the server.
+//! \brief Connect over the given \a pipe_name, passing a message with a
+//!     variable-length payload to the server.
 //!
-//! This is used for kAddAttachmentV2 and kRemoveAttachmentV2 message types
-//! which support paths longer than MAX_PATH.
+//! This is used for messages whose `ClientToServerMessage` header is followed
+//! by additional payload bytes.
 //!
 //! \param[in] pipe_name The name of the pipe to connect to.
-//! \param[in] message_type Either kAddAttachmentV2 or kRemoveAttachmentV2.
-//! \param[in] path The attachment path to send.
+//! \param[in] message The message header to send.
+//! \param[in] head The first payload bytes to send after \a message.
+//! \param[in] tail Payload bytes to send after \a head.
 //! \param[out] response The server's response.
 //!
 //! \return `true` on success, `false` on failure with a message logged.
-bool SendAttachmentToCrashHandlerServer(
+bool SendPayloadToCrashHandlerServer(
     const std::wstring& pipe_name,
-    ClientToServerMessage::Type message_type,
-    const std::wstring& path,
+    const ClientToServerMessage& message,
+    base::span<const uint8_t> head,
+    base::span<const uint8_t> tail,
     ServerToClientMessage* response);
 
 //! \brief Wraps CreateNamedPipe() to create a single named pipe instance.

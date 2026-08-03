@@ -20,6 +20,7 @@
 #include <linux/futex.h>
 #include <pthread.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <sys/mman.h>
 #include <sys/prctl.h>
 #include <sys/socket.h>
@@ -38,6 +39,7 @@
 #include "third_party/lss/lss.h"
 #include "util/file/file_io.h"
 #include "util/file/filesystem.h"
+#include "util/file/file_writer.h"
 #include "util/linux/exception_handler_client.h"
 #include "util/linux/exception_information.h"
 #include "util/linux/scoped_pr_set_dumpable.h"
@@ -844,6 +846,33 @@ void CrashpadClient::SetCrashLoopBefore(uint64_t crash_loop_before_time) {
 void CrashpadClient::AddAttachment(const base::FilePath& attachment) {
   auto signal_handler = RequestCrashDumpHandler::Get();
   signal_handler->AddAttachment(attachment);
+}
+
+bool CrashpadClient::WriteAttachment(const base::FilePath& attachment,
+                                     base::span<const uint8_t> data) {
+  FileWriter writer;
+  if (!writer.Open(attachment,
+                   FileWriteMode::kTruncateOrCreate,
+                   FilePermissions::kOwnerOnly) ||
+      !writer.Write(data.data(), data.size())) {
+    LOG(ERROR) << "failed to write attachment " << attachment;
+    return false;
+  }
+  return true;
+}
+
+bool CrashpadClient::AppendAttachment(const base::FilePath& attachment,
+                                      base::span<const uint8_t> data) {
+  FileWriter writer;
+  if (!writer.Open(attachment,
+                   FileWriteMode::kReuseOrCreate,
+                   FilePermissions::kOwnerOnly) ||
+      writer.Seek(0, SEEK_END) < 0 ||
+      !writer.Write(data.data(), data.size())) {
+    LOG(ERROR) << "failed to write attachment " << attachment;
+    return false;
+  }
+  return true;
 }
 
 void CrashpadClient::RemoveAttachment(const base::FilePath& attachment) {

@@ -20,6 +20,7 @@
 #include <map>
 #include <string>
 
+#include "base/synchronization/lock.h"
 #include "handler/user_stream_data_source.h"
 #include "util/misc/uuid.h"
 #include "util/win/exception_handler_server.h"
@@ -85,15 +86,25 @@ class CrashReportExceptionHandler final
       WinVMAddress debug_critical_section_address) override;
   void ExceptionHandlerServerAttachmentAdded(
       const base::FilePath& attachment) override;
+  void ExceptionHandlerServerAttachmentWritten(
+      const base::FilePath& attachment, const std::string& data) override;
+  void ExceptionHandlerServerAttachmentAppended(
+      const base::FilePath& attachment, const std::string& data) override;
   void ExceptionHandlerServerAttachmentRemoved(
       const base::FilePath& attachment) override;
   void ExceptionHandlerServerRetryRequested() override;
 
  private:
+  bool HasStartupAttachment(const base::FilePath& attachment) const;
+  bool HasUserAttachment(const base::FilePath& attachment) const;
+  bool IsWritableAttachment(const base::FilePath& attachment) const;
+
   CrashReportDatabase* database_;  // weak
   CrashReportUploadThread* upload_thread_;  // weak
   const std::map<std::string, std::string>* process_annotations_;  // weak
-  std::vector<base::FilePath> attachments_;
+  base::Lock attachments_lock_;
+  std::vector<base::FilePath> startup_attachments_;
+  std::vector<base::FilePath> user_attachments_;
   const base::FilePath* screenshot_;  // weak
   const bool wait_for_upload_;
   const base::FilePath* crash_reporter_;  // weak

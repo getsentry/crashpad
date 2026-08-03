@@ -218,6 +218,12 @@ class CrashReportDatabase {
     //! \param[in] reader File reader for the minidump data.
     void AddMinidump(FileReaderInterface* reader);
 
+    //! \brief Returns `true` if \a attachment is the event attachment.
+    static bool IsEvent(const base::FilePath& attachment);
+
+    //! \brief Returns `true` if \a attachment is a breadcrumb attachment.
+    static bool IsBreadcrumb(const base::FilePath& attachment);
+
     //! \brief Finalizes the feedback report and closes file handles.
     void Finish();
 
