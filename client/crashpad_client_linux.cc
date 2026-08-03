@@ -162,6 +162,9 @@ class SignalHandler {
     last_chance_handler_ = handler;
   }
 
+  // Set from --wait-for-upload, before Install().
+  bool wait_for_report_ = false;
+
   // The base implementation for all signal handlers, suitable for calling
   // directly to simulate signal delivery.
   void HandleCrash(int signo, siginfo_t* siginfo, void* context) {
@@ -230,8 +233,12 @@ class SignalHandler {
      if (handler_->first_chance_handler_ &&
           handler_->first_chance_handler_(
               signo, siginfo, static_cast<ucontext_t*>(context))) {
+        // No dump is coming, so release anyone waiting for one.
+        handler_->WakeThreads();
         return;
       }
+      // A previous first-chance return may have left this signalled.
+      handler_->dump_done_futex_ = kDumpNotDone;
       handler_->HandleCrash(signo, siginfo, context);
       handler_->WakeThreads();
       if (handler_->last_chance_handler_ &&
@@ -264,12 +271,17 @@ class SignalHandler {
     kernel_timespec timeout;
     timeout.tv_sec = 5;
     timeout.tv_nsec = 0;
-    sys_futex(&dump_done_futex_,
-              FUTEX_WAIT_PRIVATE,
-              kDumpNotDone,
-              &timeout,
-              nullptr,
-              0);
+    int rv;
+    do {
+      rv = sys_futex(&dump_done_futex_,
+                     FUTEX_WAIT_PRIVATE,
+                     kDumpNotDone,
+                     wait_for_report_ ? nullptr : &timeout,
+                     nullptr,
+                     0);
+      // FUTEX_WAIT wakes spuriously, so recheck the value, not the return.
+    } while (wait_for_report_ && dump_done_futex_ == kDumpNotDone &&
+             (rv == 0 || errno == EINTR));
   }
 
   void WakeThreads() {
@@ -427,7 +439,8 @@ class RequestCrashDumpHandler : public SignalHandler {
     info.crash_loop_before_time = crash_loop_before_time_;
 #endif
 
-    ExceptionHandlerClient client(sock_to_handler_.get(), true);
+    ExceptionHandlerClient client(
+        sock_to_handler_.get(), true, wait_for_report_);
     client.RequestCrashDump(info);
   }
 
@@ -535,6 +548,7 @@ bool CrashpadClient::StartHandler(
   }
 
   auto signal_handler = RequestCrashDumpHandler::Get();
+  signal_handler->wait_for_report_ = wait_for_upload;
   return signal_handler->Initialize(
       std::move(client_sock), handler_pid, &unhandled_signals_);
 }
