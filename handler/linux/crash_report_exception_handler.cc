@@ -305,7 +305,9 @@ bool CrashReportExceptionHandler::WriteMinidumpToDatabase(
 
   bool has_crash_reporter = crash_reporter_ && !crash_reporter_->empty() &&
                             crash_envelope_ && !crash_envelope_->empty();
-  if (has_crash_reporter) {
+  bool uploads_enabled = false;
+  database_->GetSettings()->GetUploadsEnabled(&uploads_enabled);
+  if (has_crash_reporter && uploads_enabled) {
     CrashReportDatabase::Envelope envelope(new_report->ReportID());
     if (envelope.Initialize(*crash_envelope_)) {
       envelope.AddAttachments(attachments_);
@@ -327,7 +329,7 @@ bool CrashReportExceptionHandler::WriteMinidumpToDatabase(
     return false;
   }
 
-  if (has_crash_reporter) {
+  if (has_crash_reporter && uploads_enabled) {
     database_->DeleteReport(new_report->ReportID());
   } else if (upload_thread_) {
     upload_thread_->ReportPending(uuid);

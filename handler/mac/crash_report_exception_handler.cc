@@ -212,7 +212,9 @@ kern_return_t CrashReportExceptionHandler::CatchMachException(
 
     bool has_crash_reporter = crash_reporter_ && !crash_reporter_->empty() &&
                               crash_envelope_ && !crash_envelope_->empty();
-    if (has_crash_reporter) {
+    bool uploads_enabled = false;
+    settings->GetUploadsEnabled(&uploads_enabled);
+    if (has_crash_reporter && uploads_enabled) {
       CrashReportDatabase::Envelope envelope(new_report->ReportID());
       if (envelope.Initialize(*crash_envelope_)) {
         envelope.AddAttachments(attachments_);
@@ -233,7 +235,7 @@ kern_return_t CrashReportExceptionHandler::CatchMachException(
       return KERN_FAILURE;
     }
 
-    if (has_crash_reporter) {
+    if (has_crash_reporter && uploads_enabled) {
       database_->DeleteReport(uuid);
     } else if (upload_thread_) {
       if (wait_for_upload_) {
