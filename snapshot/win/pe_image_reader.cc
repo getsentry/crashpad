@@ -177,7 +177,8 @@ bool PEImageReader::DebugDirectoryInformation(UUID* uuid,
       continue;
 
     if (debug_directory.AddressOfRawData) {
-      if (debug_directory.SizeOfData < sizeof(CodeViewRecordPDB70)) {
+      if (debug_directory.SizeOfData <
+          offsetof(CodeViewRecordPDB70, pdb_name) + 1) {
         LOG(WARNING) << "CodeView debug entry of unexpected size in "
                      << module_subrange_reader_.name();
         continue;
