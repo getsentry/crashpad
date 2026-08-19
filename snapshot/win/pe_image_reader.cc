@@ -204,7 +204,7 @@ bool PEImageReader::DebugDirectoryInformation(UUID* uuid,
       if (data[data.size() - 1] != '\0') {
         LOG(WARNING) << "CodeView debug entry missing NUL-terminator in "
                      << module_subrange_reader_.name();
-        return false;
+        continue;
       }
 
       CodeViewRecordPDB70* codeview =
