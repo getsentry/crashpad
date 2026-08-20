@@ -1,4 +1,4 @@
-// Copyright 2014 The Crashpad Authors. All rights reserved.
+// Copyright 2014 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@
 #ifndef CRASHPAD_CLIENT_CRASHPAD_CLIENT_H_
 #define CRASHPAD_CLIENT_CRASHPAD_CLIENT_H_
 
+#include <functional>
 #include <map>
 #include <set>
 #include <string>
@@ -22,20 +23,28 @@
 
 #include <stdint.h>
 
+#include "base/containers/span.h"
 #include "base/files/file_path.h"
 #include "build/build_config.h"
-#include "build/chromeos_buildflags.h"
 #include "util/file/file_io.h"
-#include "util/misc/capture_context.h"
 
-#if defined(OS_APPLE)
-#include "base/mac/scoped_mach_port.h"
-#elif defined(OS_WIN)
+#if !BUILDFLAG(IS_FUCHSIA)
+#include "util/misc/capture_context.h"
+#endif  // !BUILDFLAG(IS_FUCHSIA)
+
+#if BUILDFLAG(IS_APPLE)
+#include "base/apple/scoped_mach_port.h"
+#elif BUILDFLAG(IS_WIN)
 #include <windows.h>
 #include "util/win/scoped_handle.h"
-#elif defined(OS_LINUX) || defined(OS_CHROMEOS) || defined(OS_ANDROID)
+#elif BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_ANDROID)
 #include <signal.h>
 #include <ucontext.h>
+#endif
+
+#if BUILDFLAG(IS_IOS)
+#include "client/upload_behavior_ios.h"
+#include "handler/user_stream_data_source.h"  // nogncheck
 #endif
 
 namespace crashpad {
@@ -113,19 +122,36 @@ class CrashpadClient {
   //!     option is only used on Windows.
   //! \param[in] attachments Vector that stores file paths that should be
   //!     captured with each report at the time of the crash.
+  //! \param[in] screenshot The path to a screenshot that should be
+  //!     captured with each report at the time of the crash.
+  //! \param[in] wait_for_upload If true, the handler will wait until the upload
+  //!     process finishes before signaling shutdown.
+  //! \param[in] crash_reporter The path to an external crash reporter
+  //!     executable that will be executed after a crash has been captured.
+  //! \param[in] crash_envelope The path to a crash report envelope that will be
+  //!     filled up and passed as an argument to the crash reporter.
+  //! \param[in] report_id A UUID string to use as the report identifier instead
+  //!     of generating a random one.
   //!
   //! \return `true` on success, `false` on failure with a message logged.
   bool StartHandler(const base::FilePath& handler,
                     const base::FilePath& database,
                     const base::FilePath& metrics_dir,
                     const std::string& url,
+                    const std::string& http_proxy,
                     const std::map<std::string, std::string>& annotations,
                     const std::vector<std::string>& arguments,
                     bool restartable,
                     bool asynchronous_start,
-                    const std::vector<base::FilePath>& attachments = {});
+                    const std::vector<base::FilePath>& attachments = {},
+                    const base::FilePath& screenshot = base::FilePath(),
+                    bool wait_for_upload = false,
+                    const base::FilePath& crash_reporter = base::FilePath(),
+                    const base::FilePath& crash_envelope = base::FilePath(),
+                    const std::string& report_id = std::string());
 
-#if defined(OS_ANDROID) || defined(OS_LINUX) || defined(OS_CHROMEOS) || DOXYGEN
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || \
+    DOXYGEN
   //! \brief Retrieve the socket and process ID for the handler.
   //!
   //! `StartHandler()` must have successfully been called before calling this
@@ -170,9 +196,10 @@ class CrashpadClient {
   //!
   //! \return `true` on success. Otherwise `false` with a message logged.
   static bool InitializeSignalStackForThread();
-#endif  // OS_ANDROID || OS_LINUX || OS_CHROMEOS || DOXYGEN
+#endif  // BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_LINUX) ||
+        // BUILDFLAG(IS_CHROMEOS) || DOXYGEN
 
-#if defined(OS_ANDROID) || DOXYGEN
+#if BUILDFLAG(IS_ANDROID) || DOXYGEN
   //! \brief Installs a signal handler to execute `/system/bin/app_process` and
   //!     load a Java class in response to a crash.
   //!
@@ -339,9 +366,10 @@ class CrashpadClient {
       const std::map<std::string, std::string>& annotations,
       const std::vector<std::string>& arguments,
       int socket);
-#endif  // OS_ANDROID || DOXYGEN
+#endif  // BUILDFLAG(IS_ANDROID) || DOXYGEN
 
-#if defined(OS_LINUX) || defined(OS_ANDROID) || defined(OS_CHROMEOS) || DOXYGEN
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_CHROMEOS) || \
+    DOXYGEN
   //! \brief Installs a signal handler to launch a handler process in reponse to
   //!     a crash.
   //!
@@ -355,6 +383,8 @@ class CrashpadClient {
   //!     path as its `--metrics-dir` argument.
   //! \param[in] url The URL of an upload server. The handler will be started
   //!     with this URL as its `--url` argument.
+  //! \param[in] http_proxy The URL of an HTTP proxy. The handler will be started
+  //!     with this URL as its `--http-proxy` argument.
   //! \param[in] annotations Process annotations to set in each crash report.
   //!     The handler will be started with an `--annotation` argument for each
   //!     element in this map.
@@ -362,6 +392,9 @@ class CrashpadClient {
   //!     Arguments passed in other parameters and arguments required to perform
   //!     the handshake are the responsibility of this method, and must not be
   //!     specified in this parameter.
+  //! \param[in] attachments Attachment paths to pass to the Crashpad handler.
+  //!     The handler will be started with an `--attachment` argument for each
+  //!     path in this vector.
   //!
   //! \return `true` on success, `false` on failure with a message logged.
   bool StartHandlerAtCrash(
@@ -369,6 +402,7 @@ class CrashpadClient {
       const base::FilePath& database,
       const base::FilePath& metrics_dir,
       const std::string& url,
+      const std::string& http_proxy,
       const std::map<std::string, std::string>& annotations,
       const std::vector<std::string>& arguments,
       const std::vector<base::FilePath>& attachments = {});
@@ -386,6 +420,8 @@ class CrashpadClient {
   //!     path as its `--metrics-dir` argument.
   //! \param[in] url The URL of an upload server. The handler will be started
   //!     with this URL as its `--url` argument.
+  //! \param[in] http_proxy The URL of an HTTP proxy. The handler will be started
+  //!     with this URL as its `--http-proxy` argument.
   //! \param[in] annotations Process annotations to set in each crash report.
   //!     The handler will be started with an `--annotation` argument for each
   //!     element in this map.
@@ -402,6 +438,7 @@ class CrashpadClient {
       const base::FilePath& database,
       const base::FilePath& metrics_dir,
       const std::string& url,
+      const std::string& http_proxy,
       const std::map<std::string, std::string>& annotations,
       const std::vector<std::string>& arguments,
       int socket);
@@ -418,11 +455,11 @@ class CrashpadClient {
   //!     CaptureContext() or similar.
   static void DumpWithoutCrash(NativeCPUContext* context);
 
-  //! \brief Disables any installed crash handler, including any
+  //! \brief Disables any installed crash handler, not including any
   //!     FirstChanceHandler and crashes the current process.
   //!
   //! \param[in] message A message to be logged before crashing.
-  static void CrashWithoutDump(const std::string& message);
+  [[noreturn]] static void CrashWithoutDump(const std::string& message);
 
   //! \brief The type for custom handlers installed by clients.
   using FirstChanceHandler = bool (*)(int, siginfo_t*, ucontext_t*);
@@ -445,6 +482,24 @@ class CrashpadClient {
   //! \param[in] handler The custom crash signal handler to install.
   static void SetFirstChanceExceptionHandler(FirstChanceHandler handler);
 
+  //! \brief Installs a custom crash signal handler which runs after the
+  //!     currently installed Crashpad handler.
+  //!
+  //! Handling signals appropriately can be tricky and use of this method
+  //! should be avoided, if possible.
+  //!
+  //! A handler must have already been installed before calling this method.
+  //!
+  //! The custom handler runs in a signal handler context and must be safe for
+  //! that purpose.
+  //!
+  //! If the custom handler returns `true`, the signal is not reraised.
+  //!
+  //! \param[in] handler The custom crash signal handler to install.
+  static void SetLastChanceExceptionHandler(bool (*handler)(int,
+                                                            siginfo_t*,
+                                                            ucontext_t*));
+
   //! \brief Configures a set of signals that shouldn't have Crashpad signal
   //!     handlers installed.
   //!
@@ -454,9 +509,21 @@ class CrashpadClient {
   //!
   //! \param[in] unhandled_signals The set of unhandled signals
   void SetUnhandledSignals(const std::set<int>& unhandled_signals);
-#endif  // OS_LINUX || OS_ANDROID || OS_CHROMEOS || DOXYGEN
+#endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_ANDROID) ||
+        // BUILDFLAG(IS_CHROMEOS) || DOXYGEN
 
-#if defined(OS_IOS) || DOXYGEN
+#if BUILDFLAG(IS_IOS) || DOXYGEN
+  //! \brief Observation callback invoked each time this object finishes
+  //!     processing and attempting to upload on-disk crash reports (whether or
+  //!     not the uploads succeeded).
+  //!
+  //! This callback is copied into this object. Any references or pointers
+  //! inside must outlive this object.
+  //!
+  //! The callback might be invoked on a background thread, so clients must
+  //! synchronize appropriately.
+  using ProcessPendingReportsObservationCallback = std::function<void()>;
+
   //! \brief Configures the process to direct its crashes to the iOS in-process
   //! Crashpad handler.
   //!
@@ -465,11 +532,16 @@ class CrashpadClient {
   //! \param[in] database The path to a Crashpad database.
   //! \param[in] url The URL of an upload server.
   //! \param[in] annotations Process annotations to set in each crash report.
+  //! \param[in] callback Optional callback invoked zero or more times
+  //!     on a background thread each time the handler finishes
+  //!     processing and attempting to upload on-disk crash reports.
+  //!     If this callback is empty, it is not invoked.
   //! \return `true` on success, `false` on failure with a message logged.
   static bool StartCrashpadInProcessHandler(
       const base::FilePath& database,
       const std::string& url,
-      const std::map<std::string, std::string>& annotations);
+      const std::map<std::string, std::string>& annotations,
+      ProcessPendingReportsObservationCallback callback);
 
   //! \brief Requests that the handler convert intermediate dumps into
   //!     minidumps and trigger an upload if possible.
@@ -483,8 +555,13 @@ class CrashpadClient {
   //! \param[in] annotations Process annotations to set in each crash report.
   //!     Useful when adding crash annotations detected on the next run after a
   //!     crash but before upload.
+  //! \param[in] user_stream_sources An optional vector containing the
+  //!     extensibility data sources to call on crash. Each time a minidump is
+  //!     created, the sources are called in turn. Any streams returned are
+  //!     added to the minidump.
   static void ProcessIntermediateDumps(
-      const std::map<std::string, std::string>& annotations = {});
+      const std::map<std::string, std::string>& annotations = {},
+      const UserStreamDataSources* user_stream_sources = nullptr);
 
   //! \brief Requests that the handler convert a single intermediate dump at \a
   //!     file generated by DumpWithoutCrashAndDeferProcessingAtPath into a
@@ -510,7 +587,12 @@ class CrashpadClient {
   //! on another thread. This method does not block.
   //!
   //! A handler must have already been installed before calling this method.
-  static void StartProcessingPendingReports();
+  //!
+  //! \param[in] upload_behavior Controls when the upload thread will run and
+  //!     process pending reports. By default, only uploads pending reports
+  //!     when the application is active.
+  static void StartProcessingPendingReports(
+      UploadBehavior upload_behavior = UploadBehavior::kUploadWhenAppIsActive);
 
   //! \brief Requests that the handler capture an intermediate dump even though
   //!     there hasn't been a crash. The intermediate dump will be converted
@@ -554,9 +636,22 @@ class CrashpadClient {
   static void DumpWithoutCrashAndDeferProcessingAtPath(
       NativeCPUContext* context,
       const base::FilePath path);
+
+  //! \brief Unregister the Crashpad client. Intended to be used by tests so
+  //!     multiple Crashpad clients can be started and stopped. Not expected to
+  //!     be used in a shipping application.
+  static void ResetForTesting();
+
+  //! \brief Inject a callback into the Mach exception and signal handling
+  //!     mechanisms. Intended to be used by tests to trigger a reentrant
+  //      exception.
+  static void SetExceptionCallbackForTesting(void (*callback)());
+
+  //! \brief Returns the thread id of the Mach exception thread, used by tests.
+  static uint64_t GetThreadIdForTesting();
 #endif
 
-#if defined(OS_APPLE) || DOXYGEN
+#if BUILDFLAG(IS_APPLE) || DOXYGEN
   //! \brief Sets the process’ crash handler to a Mach service registered with
   //!     the bootstrap server.
   //!
@@ -582,7 +677,7 @@ class CrashpadClient {
   //!     Crashpad exception handler service.
   //!
   //! \return `true` on success, `false` on failure with a message logged.
-  bool SetHandlerMachPort(base::mac::ScopedMachSendRight exception_port);
+  bool SetHandlerMachPort(base::apple::ScopedMachSendRight exception_port);
 
   //! \brief Retrieves a send right to the process’ crash handler Mach port.
   //!
@@ -603,10 +698,31 @@ class CrashpadClient {
   //!     SetHandlerMachService(). This method must only be called after a
   //!     successful call to one of those methods. `MACH_PORT_NULL` on failure
   //!     with a message logged.
-  base::mac::ScopedMachSendRight GetHandlerMachPort() const;
+  base::apple::ScopedMachSendRight GetHandlerMachPort() const;
 #endif
 
-#if defined(OS_WIN) || DOXYGEN
+#if BUILDFLAG(IS_WIN) || DOXYGEN
+  //! \brief The type for custom handlers installed by clients.
+  using FirstChanceHandler = bool (*)(EXCEPTION_POINTERS*);
+
+  //! \brief Installs a custom unhandled exception filter which runs before the
+  //!     currently installed Crashpad handler.
+  //!
+  //! Handling exceptions appropriately can be tricky and use of this method
+  //! should be avoided, if possible.
+  //!
+  //! A handler must have already been installed before calling this method.
+  //!
+  //! The custom handler runs in an unhandled exception filter context and must
+  //! be safe for that purpose.
+  //!
+  //! If the custom handler returns `true`, the exception is considered handled
+  //! and the handler returns. Otherwise, the currently installed Crashpad
+  //! unhandled exception handler is run.
+  //!
+  //! \param[in] handler The custom unhandled exception handler to install.
+  static void SetFirstChanceExceptionHandler(FirstChanceHandler handler);
+
   //! \brief Sets the IPC pipe of a presumably-running Crashpad handler process
   //!     which was started with StartHandler() or by other compatible means
   //!     and does an IPC message exchange to register this process with the
@@ -653,6 +769,21 @@ class CrashpadClient {
   //!     error message will have been logged.
   bool WaitForHandlerStart(unsigned int timeout_ms);
 
+  //! \brief Register a DLL using WerRegisterExceptionModule().
+  //!
+  //! This method should only be called after a successful call to
+  //! SetHandlerIPCPipe() or StartHandler(). The registration is valid for the
+  //! lifetime of this object.
+  //!
+  //! \param[in] full_path The full path to the DLL that will be registered.
+  //!     The DLL path should also be set in an appropriate
+  //!     `Windows Error Reporting` registry key.
+  //!
+  //! \return `true` if the DLL was registered. Note: Windows just stashes the
+  //!     path somewhere so this returns `true` even if the DLL is not yet
+  //!     set in an appropriate registry key, or does not exist.
+  bool RegisterWerModule(const std::wstring& full_path);
+
   //! \brief Requests that the handler capture a dump even though there hasn't
   //!     been a crash.
   //!
@@ -693,20 +824,9 @@ class CrashpadClient {
   static bool DumpAndCrashTargetProcess(HANDLE process,
                                         HANDLE blame_thread,
                                         DWORD exception_code);
-
-  enum : uint32_t {
-    //! \brief The exception code (roughly "Client called") used when
-    //!     DumpAndCrashTargetProcess() triggers an exception in a target
-    //!     process.
-    //!
-    //! \note This value does not have any bits of the top nibble set, to avoid
-    //!     confusion with real exception codes which tend to have those bits
-    //!     set.
-    kTriggeredExceptionCode = 0xcca11ed,
-  };
 #endif
 
-#if defined(OS_APPLE) || DOXYGEN
+#if BUILDFLAG(IS_APPLE) || DOXYGEN
   //! \brief Configures the process to direct its crashes to the default handler
   //!     for the operating system.
   //!
@@ -729,7 +849,7 @@ class CrashpadClient {
   static void UseSystemDefaultHandler();
 #endif
 
-#if BUILDFLAG(IS_CHROMEOS_ASH)
+#if BUILDFLAG(IS_CHROMEOS)
   //! \brief Sets a timestamp on the signal handler to be passed on to
   //!     crashpad_handler and then eventually Chrome OS's crash_reporter.
   //!
@@ -739,15 +859,51 @@ class CrashpadClient {
   static void SetCrashLoopBefore(uint64_t crash_loop_before_time);
 #endif
 
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || DOXYGEN
+  //! \brief Adds a file to the list of files to be attached to the crash
+  //!     report.
+  //!
+  //! \param[in] attachment The path to the file to be added.
+  void AddAttachment(const base::FilePath& attachment);
+
+  //! \brief Writes content to an attachment file.
+  bool WriteAttachment(
+      const base::FilePath& attachment, base::span<const uint8_t> data);
+
+  //! \brief Appends content to an attachment file.
+  bool AppendAttachment(
+      const base::FilePath& attachment, base::span<const uint8_t> data);
+
+  //! \brief Removes a file from the list of files to be attached to the crash
+  //!     report.
+  //!
+  //! \param[in] attachment The path to the file to be removed.
+  void RemoveAttachment(const base::FilePath& attachment);
+#endif
+
+  //! \brief Requests that the handler retry pending report uploads.
+  //!
+  //! Wakes the handler's upload thread to immediately process pending reports
+  //! rather than waiting for its next periodic scan. Useful after state
+  //! changes (such as clearing UploadsPaused) that should take effect without
+  //! delay.
+  void RequestRetry();
+
  private:
-#if defined(OS_APPLE)
-  base::mac::ScopedMachSendRight exception_port_;
-#elif defined(OS_WIN)
+#if BUILDFLAG(IS_WIN) || DOXYGEN
+  //!  \brief Registers process handlers for the client.
+  void RegisterHandlers();
+#endif
+
+#if BUILDFLAG(IS_APPLE)
+  base::apple::ScopedMachSendRight exception_port_;
+#elif BUILDFLAG(IS_WIN)
   std::wstring ipc_pipe_;
   ScopedKernelHANDLE handler_start_thread_;
-#elif defined(OS_LINUX) || defined(OS_CHROMEOS) || defined(OS_ANDROID)
+  ScopedVectoredExceptionRegistration vectored_handler_;
+#elif BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_ANDROID)
   std::set<int> unhandled_signals_;
-#endif  // OS_APPLE
+#endif  // BUILDFLAG(IS_APPLE)
 };
 
 }  // namespace crashpad

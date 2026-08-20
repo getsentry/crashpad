@@ -1,4 +1,4 @@
-// Copyright 2017 The Crashpad Authors. All rights reserved.
+// Copyright 2017 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@
 #include <string.h>
 #include <sys/sysmacros.h>
 
-#include "base/bit_cast.h"
+#include "base/check_op.h"
 #include "base/files/file_path.h"
 #include "base/logging.h"
 #include "build/build_config.h"
@@ -398,7 +398,7 @@ std::unique_ptr<MemoryMap::Iterator> MemoryMap::FindFilePossibleMmapStarts(
     return std::make_unique<SparseReverseIterator>();
   }
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
   // The Android Chromium linker uses ashmem to share RELRO segments between
   // processes. The original RELRO segment has been unmapped and replaced with a
   // mapping named "/dev/ashmem/RELRO:<libname>" where <libname> is the base
@@ -427,17 +427,17 @@ std::unique_ptr<MemoryMap::Iterator> MemoryMap::FindFilePossibleMmapStarts(
       }
     }
   }
-#endif  // OS_ANDROID
+#endif  // BUILDFLAG(IS_ANDROID)
 
   for (const auto& candidate : mappings_) {
     if (candidate.device == mapping.device &&
         candidate.inode == mapping.inode
-#if !defined(OS_ANDROID)
+#if !BUILDFLAG(IS_ANDROID)
         // Libraries on Android may be mapped from zipfiles (APKs), in which
         // case the offset is not 0.
         && candidate.offset == 0
-#endif  // !defined(OS_ANDROID)
-        ) {
+#endif  // !BUILDFLAG(IS_ANDROID)
+    ) {
       possible_starts.push_back(&candidate);
     }
     if (mapping.Equals(candidate)) {

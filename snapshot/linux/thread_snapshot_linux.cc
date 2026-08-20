@@ -1,4 +1,4 @@
-// Copyright 2017 The Crashpad Authors. All rights reserved.
+// Copyright 2017 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,6 +15,12 @@
 #include "snapshot/linux/thread_snapshot_linux.h"
 
 #include <sched.h>
+
+#ifdef CLIENT_STACKTRACES_ENABLED
+#include <endian.h>
+#include <libunwind-ptrace.h>
+#include <libunwind.h>
+#endif
 
 #include "base/logging.h"
 #include "snapshot/linux/capture_memory_delegate_linux.h"
@@ -133,6 +139,7 @@ ThreadSnapshotLinux::ThreadSnapshotLinux()
       context_(),
       stack_(),
       thread_specific_data_address_(0),
+      thread_name_(),
       thread_id_(-1),
       priority_(-1),
       initialized_() {}
@@ -189,6 +196,12 @@ bool ThreadSnapshotLinux::Initialize(
         thread.thread_info.float_context.f32,
         context_.mipsel);
   }
+#elif defined(ARCH_CPU_RISCV64)
+  context_.architecture = kCPUArchitectureRISCV64;
+  context_.riscv64 = &context_union_.riscv64;
+  InitializeCPUContextRISCV64(thread.thread_info.thread_context.t64,
+                              thread.thread_info.float_context.f64,
+                              context_.riscv64);
 #else
 #error Port.
 #endif
@@ -200,7 +213,39 @@ bool ThreadSnapshotLinux::Initialize(
   thread_specific_data_address_ =
       thread.thread_info.thread_specific_data_address;
 
+  thread_name_ = thread.name;
   thread_id_ = thread.tid;
+
+#ifdef CLIENT_STACKTRACES_ENABLED
+  void* upt = _UPT_create(thread_id_);
+  if (upt) {
+    unw_addr_space_t as =
+        unw_create_addr_space(&_UPT_accessors, __LITTLE_ENDIAN);
+    unw_cursor_t cursor;
+    if (unw_init_remote(&cursor, as, upt) == UNW_ESUCCESS) {
+      do {
+        unw_word_t addr;
+        if (unw_get_reg(&cursor, UNW_REG_IP, &addr) < 0) {
+          return false;
+        }
+
+        std::string sym("");
+        char buf[1024];
+        unw_word_t symbol_offset;
+        if (unw_get_proc_name(&cursor, buf, sizeof(buf), &symbol_offset) ==
+            UNW_ESUCCESS) {
+          sym = std::string(buf);
+        }
+
+        FrameSnapshot frame(addr, sym);
+        frames_.push_back(frame);
+      } while (unw_step(&cursor) > 0);
+    }
+
+    unw_destroy_addr_space(as);
+    _UPT_destroy(upt);
+  }
+#endif
 
   priority_ =
       thread.have_priorities
@@ -234,6 +279,11 @@ uint64_t ThreadSnapshotLinux::ThreadID() const {
   return thread_id_;
 }
 
+std::string ThreadSnapshotLinux::ThreadName() const {
+  INITIALIZATION_STATE_DCHECK_VALID(initialized_);
+  return thread_name_;
+}
+
 int ThreadSnapshotLinux::SuspendCount() const {
   INITIALIZATION_STATE_DCHECK_VALID(initialized_);
   return 0;
@@ -258,6 +308,21 @@ std::vector<const MemorySnapshot*> ThreadSnapshotLinux::ExtraMemory() const {
   }
   return result;
 }
+
+#ifdef CLIENT_STACKTRACES_ENABLED
+void ThreadSnapshotLinux::TrimStackTrace(uint64_t exception_address) {
+  auto start_frame = begin(frames_);
+  for (; start_frame != end(frames_); start_frame++) {
+    // These two addresses are never equivalent to each other
+    if (start_frame->InstructionAddr() == exception_address) {
+      break;
+    }
+  }
+  if (start_frame < end(frames_)) {
+    frames_.erase(begin(frames_), start_frame);
+  }
+}
+#endif
 
 }  // namespace internal
 }  // namespace crashpad

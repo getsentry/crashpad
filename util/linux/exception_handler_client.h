@@ -1,4 +1,4 @@
-// Copyright 2017 The Crashpad Authors. All rights reserved.
+// Copyright 2017 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -30,7 +30,11 @@ class ExceptionHandlerClient {
   //! \param[in] sock A socket connected to an ExceptionHandlerServer.
   //! \param[in] multiple_clients `true` if this socket may be used by multiple
   //!     clients.
-  ExceptionHandlerClient(int sock, bool multiple_clients);
+  //! \param[in] wait_for_report `true` to wait for the handler to finish with
+  //!     the report, rather than giving up after a short timeout.
+  ExceptionHandlerClient(int sock,
+                         bool multiple_clients,
+                         bool wait_for_report = false);
 
   ExceptionHandlerClient(const ExceptionHandlerClient&) = delete;
   ExceptionHandlerClient& operator=(const ExceptionHandlerClient&) = delete;
@@ -68,6 +72,15 @@ class ExceptionHandlerClient {
   //! \param[in] can_set_ptracer Whether SetPtracer should be enabled.
   void SetCanSetPtracer(bool can_set_ptracer);
 
+  //! \brief Adds an attachment to the crash report.
+  void AddAttachment(const base::FilePath& attachment);
+
+  //! \brief Removes an attachment from the crash report.
+  void RemoveAttachment(const base::FilePath& attachment);
+
+  //! \brief Requests that the handler retry pending report uploads.
+  void RequestRetry();
+
  private:
   int SendCrashDumpRequest(
       const ExceptionHandlerProtocol::ClientInformation& info,
@@ -80,6 +93,7 @@ class ExceptionHandlerClient {
   pid_t ptracer_;
   bool can_set_ptracer_;
   bool multiple_clients_;
+  bool wait_for_report_;
 };
 
 }  // namespace crashpad

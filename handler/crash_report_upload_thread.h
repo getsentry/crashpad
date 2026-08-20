@@ -1,4 +1,4 @@
-// Copyright 2015 The Crashpad Authors. All rights reserved.
+// Copyright 2015 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,10 +15,13 @@
 #ifndef CRASHPAD_HANDLER_CRASH_REPORT_UPLOAD_THREAD_H_
 #define CRASHPAD_HANDLER_CRASH_REPORT_UPLOAD_THREAD_H_
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <unordered_map>
 
+#include "base/synchronization/lock.h"
+#include "build/build_config.h"
 #include "client/crash_report_database.h"
 #include "util/misc/uuid.h"
 #include "util/stdlib/thread_safe_vector.h"
@@ -62,14 +65,31 @@ class CrashReportUploadThread : public WorkerThread::Delegate,
     bool watch_pending_reports;
   };
 
+  //! \brief Observation callback invoked each time the in-process handler
+  //!     finishes processing and attempting to upload on-disk crash reports
+  //!     (whether or not the uploads succeeded).
+  //!
+  //! This callback is copied into this object. Any references or pointers
+  //! inside must outlive this object.
+  //!
+  //! The callback might be invoked on a background thread, so clients must
+  //! synchronize appropriately.
+  using ProcessPendingReportsObservationCallback = std::function<void()>;
+
   //! \brief Constructs a new object.
   //!
   //! \param[in] database The database to upload crash reports from.
   //! \param[in] url The URL of the server to upload crash reports to.
   //! \param[in] options Options for the report uploads.
+  //! \param[in] callback Optional callback invoked zero or more times
+  //!     on a background thread each time the this object finishes
+  //!     processing and attempting to upload on-disk crash reports.
+  //!     If this callback is empty, it is not invoked.
   CrashReportUploadThread(CrashReportDatabase* database,
-                          const std::string& url,
-                          const Options& options);
+                          std::string url,
+                          std::string http_proxy,
+                          const Options& options,
+                          ProcessPendingReportsObservationCallback callback);
 
   CrashReportUploadThread(const CrashReportUploadThread&) = delete;
   CrashReportUploadThread& operator=(const CrashReportUploadThread&) = delete;
@@ -84,6 +104,25 @@ class CrashReportUploadThread : public WorkerThread::Delegate,
   //!
   //! This method may be called from any thread.
   void ReportPending(const UUID& report_uuid);
+
+  //! \brief Runs the upload on the calling thread rather than in the upload
+  //!     thread. This is only used from the exception handler to block the
+  //!     termination of the crashed process until the upload is completed.
+  //!
+  //! \param[in] report_uuid The unique identifier of the newly added pending
+  //!     report.
+  //!
+  //! This method will run on the pool thread executing the OnCrashDumpEvent
+  void ReportPendingSync(const UUID& report_uuid);
+
+  //! \brief Wakes the upload thread to immediately process pending reports.
+  //!
+  //! Unlike ReportPending(), no specific report UUID is enqueued; the next
+  //! pass relies on the thread's pending-report scan (requires
+  //! \a watch_pending_reports).
+  //!
+  //! This method may be called from any thread.
+  void RetryPending();
 
   // Stoppable:
 
@@ -106,6 +145,9 @@ class CrashReportUploadThread : public WorkerThread::Delegate,
   //! This method may be called from any thread other than the upload thread.
   //! It is expected to only be called from the same thread that called Start().
   void Stop() override;
+
+  //! \return `true` if the thread is running, `false` if it is not.
+  bool is_running() const { return thread_.is_running(); }
 
  private:
   //! \brief The result code from UploadReport().
@@ -142,7 +184,7 @@ class CrashReportUploadThread : public WorkerThread::Delegate,
   //! \param[in] report The crash report to process.
   //!
   //! If report upload is enabled, this method attempts to upload \a report by
-  //! calling UplaodReport(). If the upload is successful, the report will be
+  //! calling UploadReport(). If the upload is successful, the report will be
   //! marked as “completed” in the database. If the upload fails and more
   //! retries are desired, the report’s upload-attempt count and
   //! last-upload-attempt time will be updated in the database and it will
@@ -186,7 +228,6 @@ class CrashReportUploadThread : public WorkerThread::Delegate,
   //! upload attempts to be retried.
   bool ShouldRateLimitUpload(const CrashReportDatabase::Report& report);
 
-#if defined(OS_IOS)
   //! \brief Rate-limit report retries.
   //!
   //! \param[in] report The crash report to process.
@@ -195,21 +236,21 @@ class CrashReportUploadThread : public WorkerThread::Delegate,
   //! rate limit in ShouldRateLimitUpload). When a report upload ends in a retry
   //! state, an in-memory only timestamp is stored in |retry_uuid_time_map_|
   //! with the next possible retry time. This timestamp is a backoff from the
-  //! main thread work interval, doubling on each attemt. Because this is only
+  //! main thread work interval, doubling on each attempt. Because this is only
   //! stored in memory, on restart reports in the retry state will always be
   //! tried once, and then fall back into the next backoff. This continues until
   //! kRetryAttempts is reached.
   bool ShouldRateLimitRetry(const CrashReportDatabase::Report& report);
-#endif
 
   const Options options_;
+  const ProcessPendingReportsObservationCallback callback_;
   const std::string url_;
+  const std::string http_proxy_;
   WorkerThread thread_;
   ThreadSafeVector<UUID> known_pending_report_uuids_;
-#if defined(OS_IOS)
-  // This is not thread-safe, and only used by the worker thread.
+  base::Lock process_pending_reports_lock_;
+  // Guarded by process_pending_reports_lock_.
   std::map<UUID, time_t> retry_uuid_time_map_;
-#endif
   CrashReportDatabase* database_;  // weak
 };
 

@@ -1,4 +1,4 @@
-// Copyright 2017 The Crashpad Authors. All rights reserved.
+// Copyright 2017 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -237,6 +237,8 @@ std::string UserAgent() {
 #elif defined(ARCH_CPU_BIG_ENDIAN)
     static constexpr char arch[] = "aarch64_be";
 #endif
+#elif defined (ARCH_CPU_RISCV64)
+    static constexpr char arch[] = "riscv64";
 #else
 #error Port
 #endif
@@ -456,6 +458,11 @@ bool HTTPTransportLibcurl::ExecuteSynchronously(std::string* response_body) {
   TRY_CURL_EASY_SETOPT(curl.get(), CURLOPT_READDATA, this);
   TRY_CURL_EASY_SETOPT(curl.get(), CURLOPT_WRITEFUNCTION, WriteResponseBody);
   TRY_CURL_EASY_SETOPT(curl.get(), CURLOPT_WRITEDATA, response_body);
+  if (!http_proxy().empty()) {
+    // An empty string is a special value that libcurl interprets as “no proxy”.
+    const char* proxy = http_proxy() == "<empty>" ? "" : http_proxy().c_str();
+    TRY_CURL_EASY_SETOPT(curl.get(), CURLOPT_PROXY, proxy);
+  }
 
 #undef TRY_CURL_EASY_SETOPT
 #undef TRY_CURL_SLIST_APPEND
@@ -479,8 +486,9 @@ bool HTTPTransportLibcurl::ExecuteSynchronously(std::string* response_body) {
     return false;
   }
 
-  if (status != 200) {
-    LOG(ERROR) << base::StringPrintf("HTTP status %ld", status);
+  if (!HandleHTTPStatus(static_cast<unsigned long>(status))) {
+    LOG(ERROR) << base::StringPrintf("HTTP response = \"%s\"",
+                                     response_body->c_str());
     return false;
   }
 
@@ -522,6 +530,10 @@ size_t HTTPTransportLibcurl::WriteResponseBody(char* buffer,
                                                size_t size,
                                                size_t nitems,
                                                void* userdata) {
+#if defined(MEMORY_SANITIZER)
+  // Work around an MSAN false-positive in passing `userdata`.
+  __msan_unpoison(&userdata, sizeof(userdata));
+#endif
   std::string* response_body = reinterpret_cast<std::string*>(userdata);
 
   // This libcurl callback mimics the silly stdio-style fread() interface: size

@@ -1,4 +1,4 @@
-// Copyright 2017 The Crashpad Authors. All rights reserved.
+// Copyright 2017 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,9 +17,11 @@
 #include <errno.h>
 #include <signal.h>
 #include <sys/prctl.h>
+#include <sys/socket.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include "base/check_op.h"
 #include "base/logging.h"
 #include "base/posix/eintr_wrapper.h"
 #include "build/build_config.h"
@@ -30,7 +32,7 @@
 #include "util/misc/from_pointer_cast.h"
 #include "util/posix/signals.h"
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
 #include <android/api-level.h>
 #endif
 
@@ -63,11 +65,14 @@ class ScopedSigprocmaskRestore {
 
 }  // namespace
 
-ExceptionHandlerClient::ExceptionHandlerClient(int sock, bool multiple_clients)
+ExceptionHandlerClient::ExceptionHandlerClient(int sock,
+                                               bool multiple_clients,
+                                               bool wait_for_report)
     : server_sock_(sock),
       ptracer_(-1),
       can_set_ptracer_(true),
-      multiple_clients_(multiple_clients) {}
+      multiple_clients_(multiple_clients),
+      wait_for_report_(wait_for_report) {}
 
 ExceptionHandlerClient::~ExceptionHandlerClient() = default;
 
@@ -133,15 +138,24 @@ int ExceptionHandlerClient::SignalCrashDump(
   }
 
   siginfo_t siginfo = {};
-  timespec timeout;
-  timeout.tv_sec = 5;
-  timeout.tv_nsec = 0;
-  if (HANDLE_EINTR(sys_sigtimedwait(&dump_done_sigset, &siginfo, &timeout)) <
-      0) {
-    return errno;
+  timespec timeout = {};
+  timeout.tv_sec = wait_for_report_ ? 1 : 5;
+  for (;;) {
+    if (HANDLE_EINTR(sys_sigtimedwait(&dump_done_sigset, &siginfo, &timeout)) >=
+        0) {
+      return 0;
+    }
+    if (errno != EAGAIN || !wait_for_report_) {
+      return errno;
+    }
+    // Only keep waiting while the handler is still there to signal us.
+    char peek;
+    ssize_t rv =
+        HANDLE_EINTR(recv(server_sock_, &peek, 1, MSG_PEEK | MSG_DONTWAIT));
+    if (rv == 0 || (rv < 0 && errno != EAGAIN)) {
+      return ESRCH;
+    }
   }
-
-  return 0;
 }
 
 int ExceptionHandlerClient::SendCrashDumpRequest(
@@ -222,6 +236,32 @@ int ExceptionHandlerClient::WaitForCrashDumpComplete() {
   }
 
   return errno;
+}
+
+void ExceptionHandlerClient::AddAttachment(const base::FilePath& attachment) {
+  ExceptionHandlerProtocol::ClientToServerMessage message;
+  message.type =
+      ExceptionHandlerProtocol::ClientToServerMessage::kTypeAddAttachment;
+  snprintf(
+      message.attachment_info.path, PATH_MAX, "%s", attachment.value().c_str());
+  UnixCredentialSocket::SendMsg(server_sock_, &message, sizeof(message));
+}
+
+void ExceptionHandlerClient::RemoveAttachment(
+    const base::FilePath& attachment) {
+  ExceptionHandlerProtocol::ClientToServerMessage message;
+  message.type =
+      ExceptionHandlerProtocol::ClientToServerMessage::kTypeRemoveAttachment;
+  snprintf(
+      message.attachment_info.path, PATH_MAX, "%s", attachment.value().c_str());
+  UnixCredentialSocket::SendMsg(server_sock_, &message, sizeof(message));
+}
+
+void ExceptionHandlerClient::RequestRetry() {
+  ExceptionHandlerProtocol::ClientToServerMessage message;
+  message.type =
+      ExceptionHandlerProtocol::ClientToServerMessage::kTypeRequestRetry;
+  UnixCredentialSocket::SendMsg(server_sock_, &message, sizeof(message));
 }
 
 }  // namespace crashpad

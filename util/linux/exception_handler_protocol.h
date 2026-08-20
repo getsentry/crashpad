@@ -1,4 +1,4 @@
-// Copyright 2017 The Crashpad Authors. All rights reserved.
+// Copyright 2017 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 #define CRASHPAD_UTIL_LINUX_EXCEPTION_HANDLER_PROTOCOL_H_
 
 #include <errno.h>
+#include <linux/limits.h>
 #include <signal.h>
 #include <stdint.h>
 #include <sys/types.h>
@@ -51,12 +52,16 @@ class ExceptionHandlerProtocol {
     //!     SanitizationInformation struct, or 0 if there is no such struct.
     VMAddress sanitization_information_address;
 
-#if defined(OS_LINUX) || defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
     //! \brief Indicates that the client is likely in a crash loop if a crash
     //!     occurs before this timestamp. This value is only used by ChromeOS's
     //!     `/sbin/crash_reporter`.
     uint64_t crash_loop_before_time;
 #endif
+  };
+
+  struct AttachmentInformation {
+    char path[PATH_MAX];
   };
 
   //! \brief The signal used to indicate a crash dump is complete.
@@ -81,7 +86,16 @@ class ExceptionHandlerProtocol {
       kTypeCheckCredentials,
 
       //! \brief Used to request a crash dump for the sending client.
-      kTypeCrashDumpRequest
+      kTypeCrashDumpRequest,
+
+      //! \brief Request that the server add an attachment.
+      kTypeAddAttachment,
+
+      //! \brief Request that the server remove an attachment.
+      kTypeRemoveAttachment,
+
+      //! \brief Request that the server retry pending report uploads.
+      kTypeRequestRetry,
     };
 
     Type type;
@@ -92,6 +106,9 @@ class ExceptionHandlerProtocol {
     union {
       //! \brief Valid for type == kCrashDumpRequest
       ClientInformation client_info;
+
+      //! \brief Valid for type == kAddAttachment || type == kRemoveAttachment
+      AttachmentInformation attachment_info;
     };
   };
 

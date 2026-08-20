@@ -1,4 +1,4 @@
-// Copyright 2015 The Crashpad Authors. All rights reserved.
+// Copyright 2015 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@
 #include <utility>
 
 #include "base/strings/utf_string_conversions.h"
+#include "base/synchronization/lock.h"
 #include "client/crash_report_database.h"
 #include "client/settings.h"
 #include "handler/crash_report_upload_thread.h"
@@ -29,6 +30,7 @@
 #include "util/misc/metrics.h"
 #include "util/win/registration_protocol_win.h"
 #include "util/win/scoped_process_suspend.h"
+#include "util/win/screenshot.h"
 #include "util/win/termination_codes.h"
 
 namespace crashpad {
@@ -38,11 +40,21 @@ CrashReportExceptionHandler::CrashReportExceptionHandler(
     CrashReportUploadThread* upload_thread,
     const std::map<std::string, std::string>* process_annotations,
     const std::vector<base::FilePath>* attachments,
-    const UserStreamDataSources* user_stream_data_sources)
+    const base::FilePath* screenshot,
+    const UserStreamDataSources* user_stream_data_sources,
+    const bool wait_for_upload,
+    const base::FilePath* crash_reporter,
+    const base::FilePath* crash_envelope,
+    const UUID* report_id)
     : database_(database),
       upload_thread_(upload_thread),
       process_annotations_(process_annotations),
-      attachments_(attachments),
+      startup_attachments_(*attachments),
+      screenshot_(screenshot),
+      wait_for_upload_(wait_for_upload),
+      crash_reporter_(crash_reporter),
+      crash_envelope_(crash_envelope),
+      report_id_(report_id),
       user_stream_data_sources_(user_stream_data_sources) {}
 
 CrashReportExceptionHandler::~CrashReportExceptionHandler() {}
@@ -90,7 +102,7 @@ unsigned int CrashReportExceptionHandler::ExceptionHandlerServerException(
 
     std::unique_ptr<CrashReportDatabase::NewReport> new_report;
     CrashReportDatabase::OperationStatus database_status =
-        database_->PrepareNewCrashReport(&new_report);
+        database_->PrepareNewCrashReport(&new_report, report_id_);
     if (database_status != CrashReportDatabase::kNoError) {
       LOG(ERROR) << "PrepareNewCrashReport failed";
       Metrics::ExceptionCaptureResult(
@@ -112,24 +124,73 @@ unsigned int CrashReportExceptionHandler::ExceptionHandlerServerException(
       return termination_code;
     }
 
-    for (const auto& attachment : (*attachments_)) {
-      FileReader file_reader;
-      if (!file_reader.Open(attachment)) {
-        LOG(ERROR) << "attachment " << attachment.value().c_str()
-                   << " couldn't be opened, skipping";
-        continue;
-      }
+    {
+      base::AutoLock scoped_lock(attachments_lock_);
+      std::vector<base::FilePath> all_attachments(startup_attachments_);
+      all_attachments.insert(all_attachments.end(),
+                             user_attachments_.begin(),
+                             user_attachments_.end());
 
-      base::FilePath filename = attachment.BaseName();
-      FileWriter* file_writer =
-          new_report->AddAttachment(base::WideToUTF8(filename.value()));
-      if (file_writer == nullptr) {
-        LOG(ERROR) << "attachment " << filename.value().c_str()
-                   << " couldn't be created, skipping";
-        continue;
-      }
+      for (const auto& attachment : all_attachments) {
+        FileReader file_reader;
+        if (!file_reader.Open(attachment)) {
+          LOG(ERROR) << "attachment " << attachment
+                     << " couldn't be opened, skipping";
+          continue;
+        }
 
-      CopyFileContent(&file_reader, file_writer);
+        base::FilePath filename = attachment.BaseName();
+        FileWriter* file_writer =
+            new_report->AddAttachment(base::WideToUTF8(filename.value()));
+        if (file_writer == nullptr) {
+          LOG(ERROR) << "attachment " << filename
+                     << " couldn't be created, skipping";
+          continue;
+        }
+
+        CopyFileContent(&file_reader, file_writer);
+      }
+    }
+
+    if (screenshot_ && !screenshot_->empty()) {
+      if (CaptureScreenshot(process_snapshot.ProcessID(), *screenshot_)) {
+        FileReader file_reader;
+        if (file_reader.Open(*screenshot_)) {
+          base::FilePath filename = screenshot_->BaseName();
+          FileWriter* file_writer =
+              new_report->AddAttachment(base::WideToUTF8(filename.value()));
+          if (file_writer != nullptr) {
+            CopyFileContent(&file_reader, file_writer);
+          }
+        }
+      }
+    }
+
+    bool has_crash_reporter = crash_reporter_ && !crash_reporter_->empty() &&
+                              crash_envelope_ && !crash_envelope_->empty();
+    bool uploads_enabled = false;
+    settings->GetUploadsEnabled(&uploads_enabled);
+    if (has_crash_reporter && uploads_enabled) {
+      CrashReportDatabase::Envelope envelope(new_report->ReportID());
+      {
+        base::AutoLock scoped_lock(attachments_lock_);
+        if (envelope.Initialize(*crash_envelope_)) {
+          std::vector<base::FilePath> attachments(startup_attachments_);
+          attachments.insert(attachments.end(),
+                             user_attachments_.begin(),
+                             user_attachments_.end());
+          envelope.AddAttachments(attachments);
+          if (auto reader = new_report->Reader()) {
+            envelope.AddMinidump(reader);
+          }
+          envelope.Finish();
+        } else {
+          has_crash_reporter = false;
+        }
+      }
+      if (has_crash_reporter) {
+        database_->LaunchCrashReporter(*crash_reporter_, *crash_envelope_);
+      }
     }
 
     UUID uuid;
@@ -142,13 +203,124 @@ unsigned int CrashReportExceptionHandler::ExceptionHandlerServerException(
       return termination_code;
     }
 
-    if (upload_thread_) {
-      upload_thread_->ReportPending(uuid);
+    if (has_crash_reporter && uploads_enabled) {
+      database_->DeleteReport(uuid);
+    } else if (upload_thread_) {
+      if (wait_for_upload_) {
+        upload_thread_->ReportPendingSync(uuid);
+      }
+      else {
+        upload_thread_->ReportPending(uuid);
+      }
     }
   }
 
   Metrics::ExceptionCaptureResult(Metrics::CaptureResult::kSuccess);
   return termination_code;
+}
+
+void CrashReportExceptionHandler::ExceptionHandlerServerAttachmentAdded(
+    const base::FilePath& attachment) {
+  base::AutoLock scoped_lock(attachments_lock_);
+  if (HasStartupAttachment(attachment) || HasUserAttachment(attachment)) {
+    LOG(WARNING) << "ignoring duplicate attachment " << attachment;
+    return;
+  }
+  user_attachments_.push_back(attachment);
+}
+
+bool CrashReportExceptionHandler::HasStartupAttachment(
+    const base::FilePath& attachment) const {
+  return std::find(startup_attachments_.begin(),
+                   startup_attachments_.end(),
+                   attachment) !=
+         startup_attachments_.end();
+}
+
+bool CrashReportExceptionHandler::HasUserAttachment(
+    const base::FilePath& attachment) const {
+  return std::find(user_attachments_.begin(),
+                   user_attachments_.end(),
+                   attachment) != user_attachments_.end();
+}
+
+// Restrict privileged handler-side attachment file writes to the external
+// crash report path and startup attachments (`__sentry-xxx`).
+bool CrashReportExceptionHandler::IsWritableAttachment(
+    const base::FilePath& attachment) const {
+  if (crash_envelope_ && !crash_envelope_->empty() &&
+      attachment == *crash_envelope_) {
+    return true;
+  }
+
+  return HasStartupAttachment(attachment) &&
+         (CrashReportDatabase::Envelope::IsEvent(attachment) ||
+          CrashReportDatabase::Envelope::IsBreadcrumb(attachment));
+}
+
+void CrashReportExceptionHandler::ExceptionHandlerServerAttachmentWritten(
+    const base::FilePath& attachment,
+    const std::string& data) {
+  base::AutoLock scoped_lock(attachments_lock_);
+  if (!IsWritableAttachment(attachment)) {
+    LOG(WARNING) << "ignoring unwritable attachment " << attachment;
+    return;
+  }
+
+  FileWriter writer;
+  if (!writer.Open(attachment,
+                   FileWriteMode::kTruncateOrCreate,
+                   FilePermissions::kOwnerOnly) ||
+      !writer.Write(data.data(), data.size())) {
+    LOG(ERROR) << "failed to write attachment " << attachment;
+    return;
+  }
+}
+
+void CrashReportExceptionHandler::ExceptionHandlerServerAttachmentAppended(
+    const base::FilePath& attachment,
+    const std::string& data) {
+  base::AutoLock scoped_lock(attachments_lock_);
+  if (!IsWritableAttachment(attachment)) {
+    LOG(WARNING) << "ignoring unwritable attachment " << attachment;
+    return;
+  }
+
+  FileWriter writer;
+  if (!writer.Open(attachment,
+                   FileWriteMode::kReuseOrCreate,
+                   FilePermissions::kOwnerOnly) ||
+      writer.Seek(0, SEEK_END) < 0 ||
+      !writer.Write(data.data(), data.size())) {
+    LOG(ERROR) << "failed to write attachment " << attachment;
+    return;
+  }
+}
+
+void CrashReportExceptionHandler::ExceptionHandlerServerAttachmentRemoved(
+    const base::FilePath& attachment) {
+  base::AutoLock scoped_lock(attachments_lock_);
+  auto startup_it = std::find(
+      startup_attachments_.begin(), startup_attachments_.end(), attachment);
+  if (startup_it != startup_attachments_.end()) {
+    startup_attachments_.erase(startup_it);
+    return;
+  }
+
+  auto user_it = std::find(
+      user_attachments_.begin(), user_attachments_.end(), attachment);
+  if (user_it != user_attachments_.end()) {
+    user_attachments_.erase(user_it);
+    return;
+  }
+
+  LOG(WARNING) << "ignoring non-existent attachment " << attachment;
+}
+
+void CrashReportExceptionHandler::ExceptionHandlerServerRetryRequested() {
+  if (upload_thread_) {
+    upload_thread_->RetryPending();
+  }
 }
 
 }  // namespace crashpad

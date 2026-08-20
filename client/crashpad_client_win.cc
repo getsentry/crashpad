@@ -1,4 +1,4 @@
-// Copyright 2015 The Crashpad Authors. All rights reserved.
+// Copyright 2015 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,13 +16,17 @@
 
 #include <windows.h>
 
+#include <werapi.h>
+
 #include <signal.h>
 #include <stdint.h>
 #include <string.h>
 
 #include <memory>
+#include <string_view>
 
 #include "base/atomicops.h"
+#include "base/check_op.h"
 #include "base/logging.h"
 #include "base/scoped_generic.h"
 #include "base/strings/stringprintf.h"
@@ -36,6 +40,7 @@
 #include "util/win/command_line.h"
 #include "util/win/context_wrappers.h"
 #include "util/win/critical_section_with_debug_info.h"
+#include "util/win/exception_codes.h"
 #include "util/win/get_function.h"
 #include "util/win/handle.h"
 #include "util/win/initial_client_data.h"
@@ -60,18 +65,36 @@ HANDLE g_signal_exception = INVALID_HANDLE_VALUE;
 // Where we store the exception information that the crash handler reads.
 ExceptionInformation g_crash_exception_information;
 
-// These handles are never closed. g_signal_non_crash_dump is used to signal to
-// the server to take a dump (not due to an exception), and the server will
-// signal g_non_crash_dump_done when the dump is completed.
-HANDLE g_signal_non_crash_dump = INVALID_HANDLE_VALUE;
-HANDLE g_non_crash_dump_done = INVALID_HANDLE_VALUE;
+CrashpadClient::FirstChanceHandler first_chance_handler_ = nullptr;
 
-// Guards multiple simultaneous calls to DumpWithoutCrash(). This is leaked.
-base::Lock* g_non_crash_dump_lock;
+// Guards multiple simultaneous calls to DumpWithoutCrash() in the client.
+base::Lock* g_non_crash_dump_lock = nullptr;
+
+class CrashDumpAutoReleaser {
+ public:
+  ~CrashDumpAutoReleaser() {
+    if (g_non_crash_dump_lock) {
+      delete g_non_crash_dump_lock;
+      g_non_crash_dump_lock = nullptr;
+    }
+  }
+};
+static CrashDumpAutoReleaser gAutoReleaser;
 
 // Where we store a pointer to the context information when taking a non-crash
 // dump.
 ExceptionInformation g_non_crash_exception_information;
+
+// Context for the out-of-process exception handler module and holds non-crash
+// dump handles. Handles are never closed once created.
+WerRegistration g_wer_registration = {WerRegistration::kWerRegistrationVersion,
+                                      INVALID_HANDLE_VALUE,
+                                      INVALID_HANDLE_VALUE,
+                                      false,
+                                      nullptr,
+                                      {0},
+                                      {0},
+                                      {0}};
 
 enum class StartupState : int {
   kNotReady = 0,  // This must be value 0 because it is the initial value of a
@@ -135,7 +158,7 @@ LONG WINAPI UnhandledExceptionHandler(EXCEPTION_POINTERS* exception_pointers) {
   // Otherwise, we know the handler startup has succeeded, and we can continue.
 
   // Tracks whether a thread has already entered UnhandledExceptionHandler.
-  static base::subtle::AtomicWord have_crashed;
+  static std::atomic have_crashed{0};
 
   // This is a per-process handler. While this handler is being invoked, other
   // threads are still executing as usual, so multiple threads could enter at
@@ -149,8 +172,19 @@ LONG WINAPI UnhandledExceptionHandler(EXCEPTION_POINTERS* exception_pointers) {
   // that we won't save the exception pointers from the second and further
   // crashes, but contention here is very unlikely, and we'll still have a stack
   // that's blocked at this location.
-  if (base::subtle::Barrier_AtomicIncrement(&have_crashed, 1) > 1) {
+  if (std::atomic_fetch_add(&have_crashed, 1) > 0) {
     SleepEx(INFINITE, false);
+  }
+
+  // TODO(supervacuus):
+  //  On Windows the first-chance handler is executed inside the UEF which is
+  //  synchronous with respect to thread it is executing on. However, any other
+  //  running thread can also raise an exception and therefore will also execute
+  //  a UEF, at which point they would run concurrently. Adapting to this would
+  //  mean to adapt the pipeline, because even if the handler was UEF-safe,
+  //  there is currently no way in which to correlate non-nested crashes.
+  if (first_chance_handler_ && first_chance_handler_(exception_pointers)) {
+    return EXCEPTION_CONTINUE_SEARCH;
   }
 
   // Otherwise, we're the first thread, so record the exception pointer and
@@ -177,6 +211,17 @@ LONG WINAPI UnhandledExceptionHandler(EXCEPTION_POINTERS* exception_pointers) {
 
   return EXCEPTION_CONTINUE_SEARCH;
 }
+
+#if !defined(ADDRESS_SANITIZER)
+LONG WINAPI HandleHeapCorruption(EXCEPTION_POINTERS* exception_pointers) {
+  if (exception_pointers->ExceptionRecord->ExceptionCode ==
+      STATUS_HEAP_CORRUPTION) {
+    return UnhandledExceptionHandler(exception_pointers);
+  }
+
+  return EXCEPTION_CONTINUE_SEARCH;
+}
+#endif
 
 void HandleAbortSignal(int signum) {
   DCHECK_EQ(signum, SIGABRT);
@@ -306,18 +351,30 @@ struct BackgroundHandlerStartThreadData {
       const base::FilePath& database,
       const base::FilePath& metrics_dir,
       const std::string& url,
+      const std::string& http_proxy,
       const std::map<std::string, std::string>& annotations,
       const std::vector<std::string>& arguments,
       const std::vector<base::FilePath>& attachments,
+      const base::FilePath& screenshot,
+      const bool wait_for_upload,
+      const base::FilePath& crash_reporter,
+      const base::FilePath& crash_envelope,
+      const std::string& report_id,
       const std::wstring& ipc_pipe,
       ScopedFileHANDLE ipc_pipe_handle)
       : handler(handler),
         database(database),
         metrics_dir(metrics_dir),
         url(url),
+        http_proxy(http_proxy),
         annotations(annotations),
         arguments(arguments),
         attachments(attachments),
+        screenshot(screenshot),
+        wait_for_upload(wait_for_upload),
+        crash_reporter(crash_reporter),
+        crash_envelope(crash_envelope),
+        report_id(report_id),
         ipc_pipe(ipc_pipe),
         ipc_pipe_handle(std::move(ipc_pipe_handle)) {}
 
@@ -325,9 +382,15 @@ struct BackgroundHandlerStartThreadData {
   base::FilePath database;
   base::FilePath metrics_dir;
   std::string url;
+  std::string http_proxy;
   std::map<std::string, std::string> annotations;
   std::vector<std::string> arguments;
   std::vector<base::FilePath> attachments;
+  base::FilePath screenshot;
+  bool wait_for_upload;
+  base::FilePath crash_reporter;
+  base::FilePath crash_envelope;
+  std::string report_id;
   std::wstring ipc_pipe;
   ScopedFileHANDLE ipc_pipe_handle;
 };
@@ -380,6 +443,11 @@ bool StartHandlerProcess(
         FormatArgumentString("url", base::UTF8ToWide(data->url)),
         &command_line);
   }
+  if (!data->http_proxy.empty()) {
+    AppendCommandLineArgument(
+        FormatArgumentString("http-proxy", base::UTF8ToWide(data->http_proxy)),
+        &command_line);
+  }
   for (const auto& kv : data->annotations) {
     AppendCommandLineArgument(
         FormatArgumentString("annotation",
@@ -388,12 +456,36 @@ bool StartHandlerProcess(
   }
   for (const base::FilePath& attachment : data->attachments) {
     AppendCommandLineArgument(
-        FormatArgumentString("attachment", attachment.value()),
+        FormatArgumentString("attachment", attachment.value()), &command_line);
+  }
+  if (!data->screenshot.empty()) {
+    AppendCommandLineArgument(
+        FormatArgumentString("screenshot", data->screenshot.value()),
+        &command_line);
+  }
+
+  if (data->wait_for_upload) {
+      AppendCommandLineArgument(L"--wait-for-upload", &command_line);
+  }
+
+  if (!data->crash_reporter.empty()) {
+    AppendCommandLineArgument(
+        FormatArgumentString("crash-reporter", data->crash_reporter.value()),
+        &command_line);
+  }
+  if (!data->crash_envelope.empty()) {
+    AppendCommandLineArgument(
+        FormatArgumentString("crash-envelope", data->crash_envelope.value()),
+        &command_line);
+  }
+  if (!data->report_id.empty()) {
+    AppendCommandLineArgument(
+        FormatArgumentString("report-id", base::UTF8ToWide(data->report_id)),
         &command_line);
   }
 
   ScopedKernelHANDLE this_process(
-      OpenProcess(kXPProcessAllAccess, true, GetCurrentProcessId()));
+      OpenProcess(kXPProcessLimitedAccess, true, GetCurrentProcessId()));
   if (!this_process.is_valid()) {
     PLOG(ERROR) << "OpenProcess";
     return false;
@@ -401,8 +493,8 @@ bool StartHandlerProcess(
 
   InitialClientData initial_client_data(
       g_signal_exception,
-      g_signal_non_crash_dump,
-      g_non_crash_dump_done,
+      g_wer_registration.dump_without_crashing,
+      g_wer_registration.dump_completed,
       data->ipc_pipe_handle.get(),
       this_process.get(),
       FromPointerCast<WinVMAddress>(&g_crash_exception_information),
@@ -416,7 +508,8 @@ bool StartHandlerProcess(
   BOOL rv;
   DWORD creation_flags;
   STARTUPINFOEX startup_info = {};
-  startup_info.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
+  startup_info.StartupInfo.dwFlags =
+      STARTF_USESTDHANDLES | STARTF_FORCEOFFFEEDBACK;
   startup_info.StartupInfo.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
   startup_info.StartupInfo.hStdOutput = GetStdHandle(STD_OUTPUT_HANDLE);
   startup_info.StartupInfo.hStdError = GetStdHandle(STD_ERROR_HANDLE);
@@ -466,8 +559,8 @@ bool StartHandlerProcess(
 
     handle_list.reserve(8);
     handle_list.push_back(g_signal_exception);
-    handle_list.push_back(g_signal_non_crash_dump);
-    handle_list.push_back(g_non_crash_dump_done);
+    handle_list.push_back(g_wer_registration.dump_without_crashing);
+    handle_list.push_back(g_wer_registration.dump_completed);
     handle_list.push_back(data->ipc_pipe_handle.get());
     handle_list.push_back(this_process.get());
     AddHandleToListIfValidAndInheritable(&handle_list,
@@ -496,7 +589,7 @@ bool StartHandlerProcess(
   // invalid command line where the first argument needed by rundll32 is not in
   // the correct format as required in:
   // https://support.microsoft.com/en-ca/help/164787/info-windows-rundll-and-rundll32-interface
-  const base::WStringPiece kRunDll32Exe(L"rundll32.exe");
+  const std::wstring_view kRunDll32Exe(L"rundll32.exe");
   bool is_embedded_in_dll = false;
   if (data->handler.value().size() >= kRunDll32Exe.size() &&
       _wcsicmp(data->handler.value()
@@ -568,35 +661,10 @@ void CommonInProcessInitialization() {
   g_non_crash_dump_lock = new base::Lock();
 }
 
-void RegisterHandlers() {
-  SetUnhandledExceptionFilter(&UnhandledExceptionHandler);
-
-  // The Windows CRT's signal.h lists:
-  // - SIGINT
-  // - SIGILL
-  // - SIGFPE
-  // - SIGSEGV
-  // - SIGTERM
-  // - SIGBREAK
-  // - SIGABRT
-  // SIGILL and SIGTERM are documented as not being generated. SIGBREAK and
-  // SIGINT are for Ctrl-Break and Ctrl-C, and aren't something for which
-  // capturing a dump is warranted. SIGFPE and SIGSEGV are captured as regular
-  // exceptions through the unhandled exception filter. This leaves SIGABRT. In
-  // the standard CRT, abort() is implemented as a synchronous call to the
-  // SIGABRT signal handler if installed, but after doing so, the unhandled
-  // exception filter is not triggered (it instead __fastfail()s). So, register
-  // to handle SIGABRT to catch abort() calls, as client code might use this and
-  // expect it to cause a crash dump. This will only work when the abort()
-  // that's called in client code is the same (or has the same behavior) as the
-  // one in use here.
-  void (*rv)(int) = signal(SIGABRT, HandleAbortSignal);
-  DCHECK_NE(rv, SIG_ERR);
-}
-
 }  // namespace
 
-CrashpadClient::CrashpadClient() : ipc_pipe_(), handler_start_thread_() {}
+CrashpadClient::CrashpadClient()
+    : ipc_pipe_(), handler_start_thread_(), vectored_handler_() {}
 
 CrashpadClient::~CrashpadClient() {}
 
@@ -605,11 +673,17 @@ bool CrashpadClient::StartHandler(
     const base::FilePath& database,
     const base::FilePath& metrics_dir,
     const std::string& url,
+    const std::string& http_proxy,
     const std::map<std::string, std::string>& annotations,
     const std::vector<std::string>& arguments,
     bool restartable,
     bool asynchronous_start,
-    const std::vector<base::FilePath>& attachments) {
+    const std::vector<base::FilePath>& attachments,
+    const base::FilePath& screenshot,
+    bool wait_for_upload,
+    const base::FilePath& crash_reporter,
+    const base::FilePath& crash_envelope,
+    const std::string& report_id) {
   DCHECK(ipc_pipe_.empty());
 
   // Both the pipe and the signalling events have to be created on the main
@@ -624,9 +698,9 @@ bool CrashpadClient::StartHandler(
 
   g_signal_exception =
       CreateEvent(&security_attributes, false /* auto reset */, false, nullptr);
-  g_signal_non_crash_dump =
+  g_wer_registration.dump_without_crashing =
       CreateEvent(&security_attributes, false /* auto reset */, false, nullptr);
-  g_non_crash_dump_done =
+  g_wer_registration.dump_completed =
       CreateEvent(&security_attributes, false /* auto reset */, false, nullptr);
 
   CommonInProcessInitialization();
@@ -637,9 +711,15 @@ bool CrashpadClient::StartHandler(
                                                    database,
                                                    metrics_dir,
                                                    url,
+                                                   http_proxy,
                                                    annotations,
                                                    arguments,
                                                    attachments,
+                                                   screenshot,
+                                                   wait_for_upload,
+                                                   crash_reporter,
+                                                   crash_envelope,
+                                                   report_id,
                                                    ipc_pipe_,
                                                    std::move(ipc_pipe_handle));
 
@@ -670,6 +750,42 @@ bool CrashpadClient::StartHandler(
   }
 }
 
+void CrashpadClient::RegisterHandlers() {
+  SetUnhandledExceptionFilter(&UnhandledExceptionHandler);
+
+  // Windows swallows heap corruption failures but we can intercept them with
+  // a vectored exception handler. Note that a vectored exception handler is
+  // not compatible with or generally helpful in ASAN builds (ASAN inserts a
+  // bad dereference at the beginning of the handler, leading to recursive
+  // invocation of the handler).
+#if !defined(ADDRESS_SANITIZER)
+  PVOID handler = AddVectoredExceptionHandler(true, HandleHeapCorruption);
+  vectored_handler_.reset(handler);
+#endif
+
+  // The Windows CRT's signal.h lists:
+  // - SIGINT
+  // - SIGILL
+  // - SIGFPE
+  // - SIGSEGV
+  // - SIGTERM
+  // - SIGBREAK
+  // - SIGABRT
+  // SIGILL and SIGTERM are documented as not being generated. SIGBREAK and
+  // SIGINT are for Ctrl-Break and Ctrl-C, and aren't something for which
+  // capturing a dump is warranted. SIGFPE and SIGSEGV are captured as regular
+  // exceptions through the unhandled exception filter. This leaves SIGABRT. In
+  // the standard CRT, abort() is implemented as a synchronous call to the
+  // SIGABRT signal handler if installed, but after doing so, the unhandled
+  // exception filter is not triggered (it instead __fastfail()s). So, register
+  // to handle SIGABRT to catch abort() calls, as client code might use this and
+  // expect it to cause a crash dump. This will only work when the abort()
+  // that's called in client code is the same (or has the same behavior) as the
+  // one in use here.
+  void (*rv)(int) = signal(SIGABRT, HandleAbortSignal);
+  DCHECK_NE(rv, SIG_ERR);
+}
+
 bool CrashpadClient::SetHandlerIPCPipe(const std::wstring& ipc_pipe) {
   DCHECK(ipc_pipe_.empty());
   DCHECK(!ipc_pipe.empty());
@@ -678,8 +794,8 @@ bool CrashpadClient::SetHandlerIPCPipe(const std::wstring& ipc_pipe) {
 
   DCHECK(!ipc_pipe_.empty());
   DCHECK_EQ(g_signal_exception, INVALID_HANDLE_VALUE);
-  DCHECK_EQ(g_signal_non_crash_dump, INVALID_HANDLE_VALUE);
-  DCHECK_EQ(g_non_crash_dump_done, INVALID_HANDLE_VALUE);
+  DCHECK_EQ(g_wer_registration.dump_without_crashing, INVALID_HANDLE_VALUE);
+  DCHECK_EQ(g_wer_registration.dump_completed, INVALID_HANDLE_VALUE);
   DCHECK(!g_critical_section_with_debug_info.DebugInfo);
   DCHECK(!g_non_crash_dump_lock);
 
@@ -711,9 +827,9 @@ bool CrashpadClient::SetHandlerIPCPipe(const std::wstring& ipc_pipe) {
   // The server returns these already duplicated to be valid in this process.
   g_signal_exception =
       IntToHandle(response.registration.request_crash_dump_event);
-  g_signal_non_crash_dump =
+  g_wer_registration.dump_without_crashing =
       IntToHandle(response.registration.request_non_crash_dump_event);
-  g_non_crash_dump_done =
+  g_wer_registration.dump_completed =
       IntToHandle(response.registration.non_crash_dump_completed_event);
 
   return true;
@@ -748,10 +864,29 @@ bool CrashpadClient::WaitForHandlerStart(unsigned int timeout_ms) {
   return exit_code == 0;
 }
 
+bool CrashpadClient::RegisterWerModule(const std::wstring& path) {
+  if (g_wer_registration.dump_completed == INVALID_HANDLE_VALUE ||
+      g_wer_registration.dump_without_crashing == INVALID_HANDLE_VALUE) {
+    LOG(ERROR) << "not connected";
+    return false;
+  }
+  // We cannot point (*context).exception_pointers to our pointers yet as it
+  // might get used for other non-crash dumps.
+  g_wer_registration.crashpad_exception_info =
+      &g_non_crash_exception_information;
+  // we can point these as we are the only users.
+  g_wer_registration.pointers.ExceptionRecord = &g_wer_registration.exception;
+  g_wer_registration.pointers.ContextRecord = &g_wer_registration.context;
+
+  HRESULT res =
+      WerRegisterRuntimeExceptionModule(path.c_str(), &g_wer_registration);
+  return res == S_OK;
+}
+
 // static
 void CrashpadClient::DumpWithoutCrash(const CONTEXT& context) {
-  if (g_signal_non_crash_dump == INVALID_HANDLE_VALUE ||
-      g_non_crash_dump_done == INVALID_HANDLE_VALUE) {
+  if (g_wer_registration.dump_without_crashing == INVALID_HANDLE_VALUE ||
+      g_wer_registration.dump_completed == INVALID_HANDLE_VALUE) {
     LOG(ERROR) << "not connected";
     return;
   }
@@ -759,7 +894,7 @@ void CrashpadClient::DumpWithoutCrash(const CONTEXT& context) {
   if (BlockUntilHandlerStartedOrFailed() == StartupState::kFailed) {
     // If we know for certain that the handler has failed to start, then abort
     // here, as we would otherwise wait indefinitely for the
-    // g_non_crash_dump_done event that would never be signalled.
+    // g_wer_registration.dump_completed event that would never be signalled.
     LOG(ERROR) << "crash server failed to launch, no dump captured";
     return;
   }
@@ -797,11 +932,14 @@ void CrashpadClient::DumpWithoutCrash(const CONTEXT& context) {
   g_non_crash_exception_information.exception_pointers =
       FromPointerCast<WinVMAddress>(&exception_pointers);
 
-  bool set_event_result = !!SetEvent(g_signal_non_crash_dump);
+  g_wer_registration.in_dump_without_crashing = true;
+  bool set_event_result = !!SetEvent(g_wer_registration.dump_without_crashing);
   PLOG_IF(ERROR, !set_event_result) << "SetEvent";
 
-  DWORD wfso_result = WaitForSingleObject(g_non_crash_dump_done, INFINITE);
+  DWORD wfso_result =
+      WaitForSingleObject(g_wer_registration.dump_completed, INFINITE);
   PLOG_IF(ERROR, wfso_result != WAIT_OBJECT_0) << "WaitForSingleObject";
+  g_wer_registration.in_dump_without_crashing = false;
 }
 
 // static
@@ -926,7 +1064,7 @@ bool CrashpadClient::DumpAndCrashTargetProcess(HANDLE process,
 
     // ecx = kTriggeredExceptionCode for dwExceptionCode.
     data_to_write.push_back(0xb9);
-    AddUint32(&data_to_write, kTriggeredExceptionCode);
+    AddUint32(&data_to_write, ExceptionCodes::kTriggeredExceptionCode);
 
     // jmp to RaiseException() via rax.
     data_to_write.push_back(0x48);  // mov rax, imm.
@@ -1069,6 +1207,123 @@ bool CrashpadClient::DumpAndCrashTargetProcess(HANDLE process,
   }
 
   return result;
+}
+
+// static
+void CrashpadClient::SetFirstChanceExceptionHandler(
+    FirstChanceHandler handler) {
+  first_chance_handler_ = handler;
+}
+
+void CrashpadClient::AddAttachment(const base::FilePath& attachment) {
+  const size_t path_length_bytes =
+      (attachment.value().length() + 1) * sizeof(wchar_t);
+  if (path_length_bytes > kMaxPathBytes) {
+    LOG(ERROR) << "Path too long: " << path_length_bytes << " bytes";
+    return;
+  }
+
+  ClientToServerMessage message = {};
+  message.type = ClientToServerMessage::kAddAttachmentV2;
+  message.attachment_v2.path_length_bytes =
+      static_cast<uint32_t>(path_length_bytes);
+
+  ServerToClientMessage response = {};
+  SendPayloadToCrashHandlerServer(ipc_pipe_,
+                                  message,
+                                  base::as_bytes(base::make_span(
+                                      attachment.value().c_str(),
+                                      path_length_bytes / sizeof(wchar_t))),
+                                  {},
+                                  &response);
+}
+
+bool CrashpadClient::WriteAttachment(const base::FilePath& attachment,
+                                     base::span<const uint8_t> data) {
+  const size_t path_length_bytes =
+      (attachment.value().length() + 1) * sizeof(wchar_t);
+  if (path_length_bytes > kMaxPathBytes ||
+      data.size() > kMaxAttachmentPayloadBytes ||
+      data.size() > UINT32_MAX - path_length_bytes) {
+    LOG(ERROR) << "attachment content too large";
+    return false;
+  }
+
+  ClientToServerMessage message = {};
+  message.type = ClientToServerMessage::kWriteAttachment;
+  message.attachment_write.path_length_bytes =
+      static_cast<uint32_t>(path_length_bytes);
+  message.attachment_write.payload_length_bytes =
+      static_cast<uint32_t>(data.size());
+
+  ServerToClientMessage response = {};
+  return SendPayloadToCrashHandlerServer(ipc_pipe_,
+                                         message,
+                                         base::as_bytes(base::make_span(
+                                             attachment.value().c_str(),
+                                             path_length_bytes
+                                                 / sizeof(wchar_t))),
+                                         data,
+                                         &response);
+}
+
+bool CrashpadClient::AppendAttachment(const base::FilePath& attachment,
+                                      base::span<const uint8_t> data) {
+  const size_t path_length_bytes =
+      (attachment.value().length() + 1) * sizeof(wchar_t);
+  if (path_length_bytes > kMaxPathBytes ||
+      data.size() > kMaxAttachmentPayloadBytes ||
+      data.size() > UINT32_MAX - path_length_bytes) {
+    LOG(ERROR) << "attachment content too large";
+    return false;
+  }
+
+  ClientToServerMessage message = {};
+  message.type = ClientToServerMessage::kAppendAttachment;
+  message.attachment_write.path_length_bytes =
+      static_cast<uint32_t>(path_length_bytes);
+  message.attachment_write.payload_length_bytes =
+      static_cast<uint32_t>(data.size());
+
+  ServerToClientMessage response = {};
+  return SendPayloadToCrashHandlerServer(ipc_pipe_,
+                                         message,
+                                         base::as_bytes(base::make_span(
+                                             attachment.value().c_str(),
+                                             path_length_bytes
+                                                 / sizeof(wchar_t))),
+                                         data,
+                                         &response);
+}
+
+void CrashpadClient::RemoveAttachment(const base::FilePath& attachment) {
+  const size_t path_length_bytes =
+      (attachment.value().length() + 1) * sizeof(wchar_t);
+  if (path_length_bytes > kMaxPathBytes) {
+    LOG(ERROR) << "Path too long: " << path_length_bytes << " bytes";
+    return;
+  }
+
+  ClientToServerMessage message = {};
+  message.type = ClientToServerMessage::kRemoveAttachmentV2;
+  message.attachment_v2.path_length_bytes =
+      static_cast<uint32_t>(path_length_bytes);
+
+  ServerToClientMessage response = {};
+  SendPayloadToCrashHandlerServer(ipc_pipe_,
+                                  message,
+                                  base::as_bytes(base::make_span(
+                                      attachment.value().c_str(),
+                                      path_length_bytes / sizeof(wchar_t))),
+                                  {},
+                                  &response);
+}
+
+void CrashpadClient::RequestRetry() {
+  ClientToServerMessage message = {};
+  message.type = ClientToServerMessage::kRequestRetry;
+  ServerToClientMessage response = {};
+  SendToCrashHandlerServer(ipc_pipe_, message, &response);
 }
 
 }  // namespace crashpad

@@ -1,4 +1,4 @@
-// Copyright 2015 The Crashpad Authors. All rights reserved.
+// Copyright 2015 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -39,7 +39,8 @@ CrashpadInfoClientOptions::CrashpadInfoClientOptions()
     : crashpad_handler_behavior(TriState::kUnset),
       system_crash_reporter_forwarding(TriState::kUnset),
       gather_indirectly_referenced_memory(TriState::kUnset),
-      indirectly_referenced_memory_cap(0) {
+      indirectly_referenced_memory_cap(0),
+      limit_stack_capture_to_sp(TriState::kUnset) {
 }
 
 }  // namespace crashpad

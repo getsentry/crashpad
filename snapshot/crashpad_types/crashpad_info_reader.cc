@@ -1,4 +1,4 @@
-// Copyright 2017 The Crashpad Authors. All rights reserved.
+// Copyright 2017 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,11 +20,11 @@
 #include "client/crashpad_info.h"
 #include "util/misc/as_underlying_type.h"
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 #include "util/win/traits.h"
-#elif defined(OS_LINUX) || defined(OS_CHROMEOS) || defined(OS_ANDROID)
+#elif BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_ANDROID)
 #include "util/linux/traits.h"
-#elif defined(OS_FUCHSIA)
+#elif BUILDFLAG(IS_FUCHSIA)
 #include "util/fuchsia/traits.h"
 #endif
 
@@ -96,6 +96,7 @@ class CrashpadInfoReader::InfoContainerSpecific : public InfoContainer {
     UnsetIfNotValidTriState(&info.crashpad_handler_behavior);
     UnsetIfNotValidTriState(&info.system_crash_reporter_forwarding);
     UnsetIfNotValidTriState(&info.gather_indirectly_referenced_memory);
+    UnsetIfNotValidTriState(&info.limit_stack_capture_to_sp);
 
     return true;
   }
@@ -109,7 +110,7 @@ class CrashpadInfoReader::InfoContainerSpecific : public InfoContainer {
     TriState crashpad_handler_behavior;
     TriState system_crash_reporter_forwarding;
     TriState gather_indirectly_referenced_memory;
-    uint8_t padding_1;
+    TriState limit_stack_capture_to_sp;
     typename Traits::Address extra_memory_ranges;
     typename Traits::Address simple_annotations;
     typename Traits::Address user_data_minidump_stream_head;
@@ -180,6 +181,8 @@ DEFINE_GETTER(TriState,
 DEFINE_GETTER(uint32_t,
               IndirectlyReferencedMemoryCap,
               indirectly_referenced_memory_cap)
+
+DEFINE_GETTER(TriState, LimitStackCaptureToSp, limit_stack_capture_to_sp)
 
 DEFINE_GETTER(VMAddress, ExtraMemoryRanges, extra_memory_ranges)
 
