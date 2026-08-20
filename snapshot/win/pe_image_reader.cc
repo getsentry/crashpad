@@ -177,7 +177,8 @@ bool PEImageReader::DebugDirectoryInformation(UUID* uuid,
       continue;
 
     if (debug_directory.AddressOfRawData) {
-      if (debug_directory.SizeOfData < sizeof(CodeViewRecordPDB70)) {
+      if (debug_directory.SizeOfData <
+          offsetof(CodeViewRecordPDB70, pdb_name) + 1) {
         LOG(WARNING) << "CodeView debug entry of unexpected size in "
                      << module_subrange_reader_.name();
         continue;
@@ -196,6 +197,12 @@ bool PEImageReader::DebugDirectoryInformation(UUID* uuid,
       if (*reinterpret_cast<DWORD*>(data.data()) !=
           CodeViewRecordPDB70::kSignature) {
         LOG(WARNING) << "encountered non-7.0 CodeView debug record in "
+                     << module_subrange_reader_.name();
+        continue;
+      }
+
+      if (data[data.size() - 1] != '\0') {
+        LOG(WARNING) << "CodeView debug entry missing NUL-terminator in "
                      << module_subrange_reader_.name();
         continue;
       }
