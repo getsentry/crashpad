@@ -130,6 +130,8 @@ unsigned int CrashReportExceptionHandler::ExceptionHandlerServerException(
       all_attachments.insert(all_attachments.end(),
                              user_attachments_.begin(),
                              user_attachments_.end());
+      all_attachments =
+          CrashReportDatabase::Envelope::ResolveAttachments(all_attachments);
 
       for (const auto& attachment : all_attachments) {
         FileReader file_reader;
@@ -179,6 +181,8 @@ unsigned int CrashReportExceptionHandler::ExceptionHandlerServerException(
           attachments.insert(attachments.end(),
                              user_attachments_.begin(),
                              user_attachments_.end());
+          attachments =
+              CrashReportDatabase::Envelope::ResolveAttachments(attachments);
           envelope.AddAttachments(attachments);
           if (auto reader = new_report->Reader()) {
             envelope.AddMinidump(reader);
@@ -245,7 +249,7 @@ bool CrashReportExceptionHandler::HasUserAttachment(
 }
 
 // Restrict privileged handler-side attachment file writes to the external
-// crash report path and startup attachments (`__sentry-xxx`).
+// crash report path and Sentry run files.
 bool CrashReportExceptionHandler::IsWritableAttachment(
     const base::FilePath& attachment) const {
   if (crash_envelope_ && !crash_envelope_->empty() &&
@@ -253,9 +257,22 @@ bool CrashReportExceptionHandler::IsWritableAttachment(
     return true;
   }
 
-  return HasStartupAttachment(attachment) &&
-         (CrashReportDatabase::Envelope::IsEvent(attachment) ||
-          CrashReportDatabase::Envelope::IsBreadcrumb(attachment));
+  if (HasStartupAttachment(attachment) &&
+      (CrashReportDatabase::Envelope::IsEvent(attachment) ||
+       CrashReportDatabase::Envelope::IsBreadcrumb(attachment))) {
+    return true;
+  }
+
+  if (!CrashReportDatabase::Envelope::IsAttachmentManifest(attachment)) {
+    return false;
+  }
+  for (const auto& startup_attachment : startup_attachments_) {
+    if (CrashReportDatabase::Envelope::IsEvent(startup_attachment) &&
+        startup_attachment.DirName() == attachment.DirName()) {
+      return true;
+    }
+  }
+  return false;
 }
 
 void CrashReportExceptionHandler::ExceptionHandlerServerAttachmentWritten(

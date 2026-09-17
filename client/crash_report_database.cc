@@ -334,6 +334,74 @@ bool CrashReportDatabase::Envelope::IsBreadcrumb(
   return basename.rfind(FILE_PATH_LITERAL("__sentry-breadcrumb"), 0) == 0;
 }
 
+// static
+bool CrashReportDatabase::Envelope::IsAttachmentManifest(
+    const base::FilePath& attachment) {
+  const base::FilePath::StringType basename = attachment.BaseName().value();
+  return basename == FILE_PATH_LITERAL("__sentry-attachments");
+}
+
+// static
+std::vector<base::FilePath>
+CrashReportDatabase::Envelope::ResolveAttachments(
+    const std::vector<base::FilePath>& attachments) {
+  base::FilePath event;
+  for (const auto& attachment : attachments) {
+    if (IsEvent(attachment)) {
+      event = attachment;
+      break;
+    }
+  }
+  if (event.empty()) {
+    return attachments;
+  }
+
+  base::FilePath manifest
+      = event.DirName().Append(FILE_PATH_LITERAL("__sentry-attachments"));
+  FileReader reader;
+  if (!reader.Open(manifest)) {
+    return attachments;
+  }
+  FileOffset size = reader.Seek(0, SEEK_END);
+  if (size < 0 || size > 16 * 1024 * 1024 || reader.Seek(0, SEEK_SET) < 0) {
+    return attachments;
+  }
+  std::string data(static_cast<size_t>(size), '\0');
+  if (!data.empty() && !reader.ReadExactly(&data[0], data.size())) {
+    return attachments;
+  }
+
+  std::vector<base::FilePath> resolved;
+  for (const auto& attachment : attachments) {
+    if (IsEvent(attachment) || IsBreadcrumb(attachment)) {
+      resolved.push_back(attachment);
+    }
+  }
+  for (size_t offset = 0; offset < data.size();) {
+    mpack_tree_t attachment;
+    mpack_tree_init_data(
+        &attachment, data.data() + offset, data.size() - offset);
+    mpack_tree_parse(&attachment);
+    mpack_node_t root = mpack_tree_root(&attachment);
+    mpack_node_t path_node = mpack_node_map_cstr(root, "path");
+    if (mpack_tree_error(&attachment) != mpack_ok ||
+        mpack_node_type(path_node) != mpack_type_str ||
+        mpack_node_strlen(path_node) == 0) {
+      mpack_tree_destroy(&attachment);
+      return attachments;
+    }
+    std::string path(mpack_node_str(path_node), mpack_node_strlen(path_node));
+    offset += mpack_tree_size(&attachment);
+    mpack_tree_destroy(&attachment);
+#if BUILDFLAG(IS_WIN)
+    resolved.emplace_back(base::UTF8ToWide(path));
+#else
+    resolved.emplace_back(path);
+#endif
+  }
+  return resolved;
+}
+
 void CrashReportDatabase::Envelope::AddAttachments(
     const std::vector<base::FilePath>& attachments) {
   base::FilePath event;

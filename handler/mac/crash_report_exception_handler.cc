@@ -191,7 +191,9 @@ kern_return_t CrashReportExceptionHandler::CatchMachException(
       return KERN_FAILURE;
     }
 
-    for (const auto& attachment : attachments_) {
+    std::vector<base::FilePath> attachments =
+        CrashReportDatabase::Envelope::ResolveAttachments(attachments_);
+    for (const auto& attachment : attachments) {
       FileReader file_reader;
       if (!file_reader.Open(attachment)) {
         LOG(ERROR) << "attachment " << attachment.value().c_str()
@@ -217,7 +219,7 @@ kern_return_t CrashReportExceptionHandler::CatchMachException(
     if (has_crash_reporter && uploads_enabled) {
       CrashReportDatabase::Envelope envelope(new_report->ReportID());
       if (envelope.Initialize(*crash_envelope_)) {
-        envelope.AddAttachments(attachments_);
+        envelope.AddAttachments(attachments);
         if (auto reader = new_report->Reader()) {
           envelope.AddMinidump(reader);
         }

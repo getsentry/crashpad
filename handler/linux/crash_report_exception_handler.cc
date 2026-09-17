@@ -284,7 +284,9 @@ bool CrashReportExceptionHandler::WriteMinidumpToDatabase(
     }
   }
 
-  for (const auto& attachment : attachments_) {
+  std::vector<base::FilePath> attachments =
+      CrashReportDatabase::Envelope::ResolveAttachments(attachments_);
+  for (const auto& attachment : attachments) {
     FileReader file_reader;
     if (!file_reader.Open(attachment)) {
       LOG(ERROR) << "attachment " << attachment.value().c_str()
@@ -310,7 +312,7 @@ bool CrashReportExceptionHandler::WriteMinidumpToDatabase(
   if (has_crash_reporter && uploads_enabled) {
     CrashReportDatabase::Envelope envelope(new_report->ReportID());
     if (envelope.Initialize(*crash_envelope_)) {
-      envelope.AddAttachments(attachments_);
+      envelope.AddAttachments(attachments);
       if (auto reader = new_report->Reader()) {
         envelope.AddMinidump(reader);
       }
