@@ -224,6 +224,13 @@ class CrashReportDatabase {
     //! \brief Returns `true` if \a attachment is a breadcrumb attachment.
     static bool IsBreadcrumb(const base::FilePath& attachment);
 
+    //! \brief Returns `true` if \a attachment is the attachment manifest.
+    static bool IsAttachmentManifest(const base::FilePath& attachment);
+
+    //! \brief Resolves attachments using the Sentry attachment manifest.
+    static std::vector<base::FilePath> ResolveAttachments(
+        const std::vector<base::FilePath>& attachments);
+
     //! \brief Finalizes the feedback report and closes file handles.
     void Finish();
 
