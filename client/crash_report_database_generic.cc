@@ -14,6 +14,7 @@
 
 #include "client/crash_report_database.h"
 
+#include <errno.h>
 #include <stdint.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -114,9 +115,12 @@ class ScopedLockFile {
 
     base::FilePath lock_path(report_path.RemoveFinalExtension().value() +
                              kLockExtension);
-    ScopedFileHandle lock_fd(LoggingOpenFileForWrite(
+    ScopedFileHandle lock_fd(OpenFileForWrite(
         lock_path, FileWriteMode::kCreateOrFail, FilePermissions::kOwnerOnly));
     if (!lock_fd.is_valid()) {
+      // Another process may hold this report's lock. The caller handles busy
+      // reports; preserve diagnostics for all other filesystem failures.
+      PLOG_IF(ERROR, errno != EEXIST) << "open " << lock_path.value();
       return false;
     }
     lock_file_.reset(lock_path);
