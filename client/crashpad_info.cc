@@ -129,7 +129,7 @@ CrashpadInfo::CrashpadInfo()
       size_(sizeof(*this)),
       version_(kCrashpadInfoVersion),
       indirectly_referenced_memory_cap_(0),
-      padding_0_(0),
+      max_stack_capture_size_(0),
       crashpad_handler_behavior_(TriState::kUnset),
       system_crash_reporter_forwarding_(TriState::kUnset),
       gather_indirectly_referenced_memory_(TriState::kUnset),
@@ -142,8 +142,7 @@ CrashpadInfo::CrashpadInfo()
       ,
       intermediate_dump_extra_memory_ranges_(nullptr)
 #endif
-      ,
-      max_stack_capture_size_(0) {
+{
 }
 
 UserDataMinidumpStreamHandle* CrashpadInfo::AddUserDataMinidumpStream(

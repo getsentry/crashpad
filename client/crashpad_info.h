@@ -358,7 +358,7 @@ struct CrashpadInfo {
   uint32_t size_;  // The size of the entire CrashpadInfo structure.
   uint32_t version_;  // kCrashpadInfoVersion
   uint32_t indirectly_referenced_memory_cap_;
-  uint32_t padding_0_;
+  uint32_t max_stack_capture_size_;
   TriState crashpad_handler_behavior_;
   TriState system_crash_reporter_forwarding_;
   TriState gather_indirectly_referenced_memory_;
@@ -370,7 +370,6 @@ struct CrashpadInfo {
 #if BUILDFLAG(IS_IOS)
   SimpleAddressRangeBag* intermediate_dump_extra_memory_ranges_;  // weak
 #endif
-  uint32_t max_stack_capture_size_;
 
   // It’s generally safe to add new fields without changing
   // kCrashpadInfoVersion, because readers should check size_ and ignore fields
