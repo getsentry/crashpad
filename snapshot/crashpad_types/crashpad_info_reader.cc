@@ -106,7 +106,7 @@ class CrashpadInfoReader::InfoContainerSpecific : public InfoContainer {
     uint32_t size;
     uint32_t version;
     uint32_t indirectly_referenced_memory_cap;
-    uint32_t padding_0;
+    uint32_t max_stack_capture_size;
     TriState crashpad_handler_behavior;
     TriState system_crash_reporter_forwarding;
     TriState gather_indirectly_referenced_memory;
@@ -183,6 +183,8 @@ DEFINE_GETTER(uint32_t,
               indirectly_referenced_memory_cap)
 
 DEFINE_GETTER(TriState, LimitStackCaptureToSp, limit_stack_capture_to_sp)
+
+DEFINE_GETTER(uint32_t, MaxStackCaptureSize, max_stack_capture_size)
 
 DEFINE_GETTER(VMAddress, ExtraMemoryRanges, extra_memory_ranges)
 

@@ -55,6 +55,7 @@ class CrashpadInfoReader {
   TriState GatherIndirectlyReferencedMemory();
   uint32_t IndirectlyReferencedMemoryCap();
   TriState LimitStackCaptureToSp();
+  uint32_t MaxStackCaptureSize();
   VMAddress ExtraMemoryRanges();
   VMAddress SimpleAnnotations();
   VMAddress AnnotationsList();

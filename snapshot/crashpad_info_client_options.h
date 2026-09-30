@@ -68,6 +68,9 @@ struct CrashpadInfoClientOptions {
 
   //! \sa CrashpadInfo::set_limit_stack_capture_to_sp()
   TriState limit_stack_capture_to_sp;
+
+  //! \sa CrashpadInfo::set_max_stack_capture_size()
+  uint32_t max_stack_capture_size;
 };
 
 }  // namespace crashpad

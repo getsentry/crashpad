@@ -100,6 +100,7 @@ bool ModuleSnapshotElf::GetCrashpadOptions(CrashpadInfoClientOptions* options) {
       crashpad_info_->GatherIndirectlyReferencedMemory();
   options->indirectly_referenced_memory_cap =
       crashpad_info_->IndirectlyReferencedMemoryCap();
+  options->max_stack_capture_size = crashpad_info_->MaxStackCaptureSize();
   return true;
 }
 

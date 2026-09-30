@@ -263,6 +263,20 @@ struct CrashpadInfo {
     limit_stack_capture_to_sp_ = limit_stack_capture_to_sp;
   }
 
+  //! \brief Sets the maximum stack capture size for non-crashing threads.
+  //!
+  //! When handling an exception, the Crashpad handler will scan all modules in
+  //! a process. The first one that has a non-zero value for this field will
+  //! dictate the maximum stack capture size.
+  //!
+  //! This setting only has an effect on Linux. The crashing thread is not
+  //! limited. A value of `0` disables the limit.
+  //!
+  //! \param[in] max_stack_capture_size The maximum stack capture size in bytes.
+  void set_max_stack_capture_size(uint32_t max_stack_capture_size) {
+    max_stack_capture_size_ = max_stack_capture_size;
+  }
+
   //! \brief Adds a custom stream to the minidump.
   //!
   //! The memory block referenced by \a data and \a size will added to the
@@ -344,7 +358,7 @@ struct CrashpadInfo {
   uint32_t size_;  // The size of the entire CrashpadInfo structure.
   uint32_t version_;  // kCrashpadInfoVersion
   uint32_t indirectly_referenced_memory_cap_;
-  uint32_t padding_0_;
+  uint32_t max_stack_capture_size_;
   TriState crashpad_handler_behavior_;
   TriState system_crash_reporter_forwarding_;
   TriState gather_indirectly_referenced_memory_;

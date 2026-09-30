@@ -165,12 +165,17 @@ void ProcessSnapshotLinux::GetCrashpadOptionsInternal(
       local_options.indirectly_referenced_memory_cap =
           module_options.indirectly_referenced_memory_cap;
     }
+    if (local_options.max_stack_capture_size == 0) {
+      local_options.max_stack_capture_size =
+          module_options.max_stack_capture_size;
+    }
 
     // If non-default values have been found for all options, the loop can end
     // early.
     if (local_options.crashpad_handler_behavior != TriState::kUnset &&
         local_options.system_crash_reporter_forwarding != TriState::kUnset &&
-        local_options.gather_indirectly_referenced_memory != TriState::kUnset) {
+        local_options.gather_indirectly_referenced_memory != TriState::kUnset &&
+        local_options.max_stack_capture_size != 0) {
       break;
     }
   }
@@ -290,7 +295,8 @@ void ProcessSnapshotLinux::InitializeThreads() {
     auto thread = std::make_unique<internal::ThreadSnapshotLinux>();
     if (thread->Initialize(&process_reader_,
                            process_reader_thread,
-                           budget_remaining_pointer)) {
+                           budget_remaining_pointer,
+                           options_.max_stack_capture_size)) {
       threads_.push_back(std::move(thread));
     }
   }

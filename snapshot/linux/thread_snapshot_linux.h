@@ -47,13 +47,16 @@ class ThreadSnapshotLinux final : public ThreadSnapshot {
   //! \param[inout] gather_indirectly_referenced_memory_bytes_remaining The
   //!     remaining budget for indirectly referenced memory, honored on entry
   //!     and updated on return.
+  //! \param[in] max_stack_capture_size The maximum stack capture size. `0`
+  //!     disables the limit.
   //!
   //! \return `true` if the snapshot could be created, `false` otherwise with
   //!     a message logged.
   bool Initialize(
       ProcessReaderLinux* process_reader,
       const ProcessReaderLinux::Thread& thread,
-      uint32_t* gather_indirectly_referenced_memory_bytes_remaining);
+      uint32_t* gather_indirectly_referenced_memory_bytes_remaining,
+      LinuxVMSize max_stack_capture_size = 0);
 
   // ThreadSnapshot:
 
