@@ -260,9 +260,11 @@ bool ThreadSnapshotLinux::Initialize(
                 thread.static_priority, thread.sched_policy, thread.nice_value)
           : -1;
 
+  ProcessReaderLinux::Thread captured_thread = thread;
+  captured_thread.stack_region_size = stack_region_size;
   CaptureMemoryDelegateLinux capture_memory_delegate(
       process_reader,
-      &thread,
+      &captured_thread,
       &pointed_to_memory_,
       gather_indirectly_referenced_memory_bytes_remaining);
   CaptureMemory::PointedToByContext(context_, &capture_memory_delegate);
