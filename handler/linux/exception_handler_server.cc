@@ -1,4 +1,4 @@
-// Copyright 2017 The Crashpad Authors. All rights reserved.
+// Copyright 2017 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@
 
 #include <utility>
 
+#include "base/check_op.h"
 #include "base/compiler_specific.h"
 #include "base/logging.h"
 #include "base/posix/eintr_wrapper.h"
@@ -198,7 +199,7 @@ class PtraceStrategyDeciderImpl : public PtraceStrategyDecider {
         if (HaveCapSysPtrace()) {
           return Strategy::kDirectPtrace;
         }
-        FALLTHROUGH;
+        [[fallthrough]];
       case PtraceScope::kNoAttach:
         LOG(WARNING) << "no ptrace";
         return Strategy::kNoPtrace;
@@ -242,7 +243,8 @@ ExceptionHandlerServer::ExceptionHandlerServer()
       strategy_decider_(new PtraceStrategyDeciderImpl()),
       delegate_(nullptr),
       pollfd_(),
-      keep_running_(true) {}
+      keep_running_(true),
+      owner_process_id_(-1) {}
 
 ExceptionHandlerServer::~ExceptionHandlerServer() = default;
 
@@ -254,6 +256,23 @@ void ExceptionHandlerServer::SetPtraceStrategyDecider(
 bool ExceptionHandlerServer::InitializeWithClient(ScopedFileHandle sock,
                                                   bool multiple_clients) {
   INITIALIZATION_STATE_SET_INITIALIZING(initialized_);
+
+  ucred owner_credentials;
+  socklen_t owner_credentials_length = sizeof(owner_credentials);
+  if (getsockopt(sock.get(),
+                 SOL_SOCKET,
+                 SO_PEERCRED,
+                 &owner_credentials,
+                 &owner_credentials_length) != 0) {
+    PLOG(ERROR) << "getsockopt";
+    return false;
+  }
+  if (owner_credentials_length != sizeof(owner_credentials) ||
+      owner_credentials.pid <= 0) {
+    LOG(ERROR) << "invalid owner credentials";
+    return false;
+  }
+  owner_process_id_ = owner_credentials.pid;
 
   pollfd_.reset(epoll_create1(EPOLL_CLOEXEC));
   if (!pollfd_.is_valid()) {
@@ -349,6 +368,27 @@ void ExceptionHandlerServer::HandleEvent(Event* event, uint32_t event_type) {
   return;
 }
 
+static bool RuntimeMessageOriginIsOwner(pid_t owner_process_id,
+                                        const ucred& creds) {
+  if (owner_process_id <= 0) {
+    LOG(WARNING) << "rejecting runtime control message without owner pid";
+    return false;
+  }
+
+  if (creds.pid <= 0) {
+    LOG(WARNING) << "rejecting runtime control message without sender pid";
+    return false;
+  }
+
+  if (creds.pid != owner_process_id) {
+    LOG(WARNING) << "rejecting runtime control message from non-owner pid "
+                 << creds.pid;
+    return false;
+  }
+
+  return true;
+}
+
 bool ExceptionHandlerServer::InstallClientSocket(ScopedFileHandle socket,
                                                  Event::Type type) {
   // The handler may not have permission to set SO_PASSCRED on the socket, but
@@ -430,6 +470,27 @@ bool ExceptionHandlerServer::ReceiveClientMessage(Event* event) {
           message.requesting_thread_stack_address,
           event->fd.get(),
           event->type == Event::Type::kSharedSocketMessage);
+
+    case ExceptionHandlerProtocol::ClientToServerMessage::kTypeAddAttachment:
+      if (!RuntimeMessageOriginIsOwner(owner_process_id_, creds)) {
+        return true;
+      }
+      delegate_->AddAttachment(base::FilePath(message.attachment_info.path));
+      return true;
+
+    case ExceptionHandlerProtocol::ClientToServerMessage::kTypeRemoveAttachment:
+      if (!RuntimeMessageOriginIsOwner(owner_process_id_, creds)) {
+        return true;
+      }
+      delegate_->RemoveAttachment(base::FilePath(message.attachment_info.path));
+      return true;
+
+    case ExceptionHandlerProtocol::ClientToServerMessage::kTypeRequestRetry:
+      if (!RuntimeMessageOriginIsOwner(owner_process_id_, creds)) {
+        return true;
+      }
+      delegate_->RequestRetry();
+      return true;
   }
 
   DCHECK(false);

@@ -1,4 +1,4 @@
-// Copyright 2017 The Crashpad Authors. All rights reserved.
+// Copyright 2017 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -65,11 +65,11 @@ TEST(SystemSnapshotLinux, Basic) {
   system.CPURevision();
   system.NXEnabled();
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
   EXPECT_FALSE(system.MachineDescription().empty());
 #else
   system.MachineDescription();
-#endif  // OS_ANDROID
+#endif  // BUILDFLAG(IS_ANDROID)
 
 #if defined(ARCH_CPU_X86_FAMILY)
   system.CPUX86Signature();

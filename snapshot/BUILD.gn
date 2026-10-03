@@ -1,4 +1,4 @@
-# Copyright 2015 The Crashpad Authors. All rights reserved.
+# Copyright 2015 The Crashpad Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -254,7 +254,6 @@ crashpad_static_library("snapshot") {
   ]
 
   if (crashpad_is_win) {
-    deps += [ "../client" ]
     cflags = [ "/wd4201" ]  # nonstandard extension used : nameless struct/union
     libs = [ "powrprof.lib" ]
   }
@@ -287,7 +286,7 @@ if (crashpad_is_linux) {
     deps = [
       ":snapshot",
       "$mini_chromium_source_parent:base",
-      "../util:util",
+      "../util",
     ]
     seed_corpus = "elf/elf_image_reader_fuzzer_corpus"
   }
@@ -364,6 +363,7 @@ source_set("snapshot_test") {
 
   if (crashpad_is_ios) {
     sources += [
+      "ios/memory_snapshot_ios_intermediate_dump_test.cc",
       "ios/process_snapshot_ios_intermediate_dump_test.cc",
       "mac/cpu_context_mac_test.cc",
     ]
@@ -436,14 +436,10 @@ source_set("snapshot_test") {
     "../compat",
     "../minidump:format",
     "../test",
+    "../third_party/googletest",
     "../third_party/googletest:googlemock",
-    "../third_party/googletest:googletest",
     "../util",
   ]
-
-  if (crashpad_is_win) {
-    deps += [ "../client" ]
-  }
 
   if (crashpad_is_ios) {
     deps += [
@@ -496,6 +492,8 @@ bundle_data("snapshot_test_ios_data") {
   sources = [
     "ios/testdata/crash-1fa088dda0adb41459d063078a0f384a0bb8eefa",
     "ios/testdata/crash-5726011582644224",
+    "ios/testdata/crash-6605504629637120",
+    "ios/testdata/crash-c44acfcbccd8c7a8",
   ]
 
   outputs = [ "{{bundle_resources_dir}}/crashpad_test_data/" +
@@ -508,6 +506,11 @@ crashpad_loadable_module("crashpad_snapshot_test_module") {
     "$mini_chromium_source_parent:base",
     "../client",
   ]
+  if (crashpad_is_in_fuchsia) {
+    # TODO(fxbug.dev/42059784): Remove this once the underlying issue is
+    # addressed.
+    exclude_toolchain_tags = [ "hwasan" ]
+  }
 }
 
 crashpad_loadable_module("crashpad_snapshot_test_module_large") {
@@ -522,6 +525,12 @@ crashpad_loadable_module("crashpad_snapshot_test_module_large") {
 
   defines = [ "CRASHPAD_INFO_SIZE_TEST_MODULE_LARGE" ]
   deps += [ "$mini_chromium_source_parent:base" ]
+
+  if (crashpad_is_in_fuchsia) {
+    # TODO(fxbug.dev/42059784): Remove this once the underlying issue is
+    # addressed.
+    exclude_toolchain_tags = [ "hwasan" ]
+  }
 }
 
 crashpad_loadable_module("crashpad_snapshot_test_module_small") {
@@ -536,6 +545,12 @@ crashpad_loadable_module("crashpad_snapshot_test_module_small") {
 
   defines = [ "CRASHPAD_INFO_SIZE_TEST_MODULE_SMALL" ]
   deps += [ "$mini_chromium_source_parent:base" ]
+
+  if (crashpad_is_in_fuchsia) {
+    # TODO(fxbug.dev/42059784): Remove this once the underlying issue is
+    # addressed.
+    exclude_toolchain_tags = [ "hwasan" ]
+  }
 }
 
 if ((crashpad_is_linux || crashpad_is_android || crashpad_is_fuchsia) &&
@@ -546,10 +561,16 @@ if ((crashpad_is_linux || crashpad_is_android || crashpad_is_fuchsia) &&
 
     # This makes `ld` emit both .hash and .gnu.hash sections.
     ldflags = [ "-Wl,--hash-style=both" ]
+
+    if (crashpad_is_in_fuchsia) {
+      # TODO(fxbug.dev/42059784): Remove this once the underlying issue is
+      # addressed.
+      exclude_toolchain_tags = [ "hwasan" ]
+    }
   }
 }
 
-if (crashpad_is_mac || crashpad_is_ios) {
+if (crashpad_is_apple) {
   crashpad_loadable_module("crashpad_snapshot_test_module_crashy_initializer") {
     testonly = true
     sources = [

@@ -1,4 +1,4 @@
-// Copyright 2015 The Crashpad Authors. All rights reserved.
+// Copyright 2015 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -55,19 +55,23 @@ class ThreadSnapshotWin final : public ThreadSnapshot {
   //!     non-null, add extra memory regions to the snapshot pointed to by the
   //!     thread's stack. The size of the regions added is subtracted from the
   //!     count, and when it's `0`, no more regions will be added.
+  //! \param[in] limit_stack_capture_to_sp If `true`, limit the stack capture
+  //!     to the current stack pointer instead of using full TEB-derived range.
   //!
   //! \return `true` if the snapshot could be created, `false` otherwise with
   //!     an appropriate message logged.
   bool Initialize(
       ProcessReaderWin* process_reader,
       const ProcessReaderWin::Thread& process_reader_thread,
-      uint32_t* gather_indirectly_referenced_memory_bytes_remaining);
+      uint32_t* gather_indirectly_referenced_memory_bytes_remaining,
+      bool limit_stack_capture_to_sp = false);
 
   // ThreadSnapshot:
 
   const CPUContext* Context() const override;
   const MemorySnapshot* Stack() const override;
   uint64_t ThreadID() const override;
+  std::string ThreadName() const override;
   int SuspendCount() const override;
   int Priority() const override;
   uint64_t ThreadSpecificDataAddress() const override;

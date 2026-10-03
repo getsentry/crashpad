@@ -1,4 +1,4 @@
-// Copyright 2015 The Crashpad Authors. All rights reserved.
+// Copyright 2015 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,9 +18,11 @@
 #include <string.h>
 #include <sys/types.h>
 
+#include <iterator>
 #include <utility>
 
-#include "base/cxx17_backports.h"
+#include "base/check.h"
+#include "base/containers/heap_array.h"
 #include "base/logging.h"
 #include "base/numerics/safe_conversions.h"
 #include "base/rand_util.h"
@@ -37,6 +39,8 @@
 namespace crashpad {
 
 namespace {
+
+constexpr DWORD kNoOwnerProcessId = static_cast<DWORD>(-1);
 
 decltype(GetNamedPipeClientProcessId)* GetNamedPipeClientProcessIdFunction() {
   static const auto get_named_pipe_client_process_id =
@@ -70,13 +74,15 @@ class PipeServiceContext {
                      ExceptionHandlerServer::Delegate* delegate,
                      base::Lock* clients_lock,
                      std::set<internal::ClientData*>* clients,
-                     uint64_t shutdown_token)
+                     uint64_t shutdown_token,
+                     DWORD owner_process_id)
       : port_(port),
         pipe_(pipe),
         delegate_(delegate),
         clients_lock_(clients_lock),
         clients_(clients),
-        shutdown_token_(shutdown_token) {}
+        shutdown_token_(shutdown_token),
+        owner_process_id_(owner_process_id) {}
 
   PipeServiceContext(const PipeServiceContext&) = delete;
   PipeServiceContext& operator=(const PipeServiceContext&) = delete;
@@ -87,6 +93,7 @@ class PipeServiceContext {
   base::Lock* clients_lock() const { return clients_lock_; }
   std::set<internal::ClientData*>* clients() const { return clients_; }
   uint64_t shutdown_token() const { return shutdown_token_; }
+  DWORD owner_process_id() const { return owner_process_id_; }
 
  private:
   HANDLE port_;  // weak
@@ -95,6 +102,7 @@ class PipeServiceContext {
   base::Lock* clients_lock_;  // weak
   std::set<internal::ClientData*>* clients_;  // weak
   uint64_t shutdown_token_;
+  DWORD owner_process_id_;
 };
 
 //! \brief The context data for registered threadpool waits.
@@ -128,6 +136,7 @@ class ClientData {
         non_crash_dump_completed_event_(
             std::move(non_crash_dump_completed_event)),
         process_(std::move(process)),
+        process_promoted_(false),
         crash_exception_information_address_(
             crash_exception_information_address),
         non_crash_exception_information_address_(
@@ -170,6 +179,29 @@ class ClientData {
     return debug_critical_section_address_;
   }
   HANDLE process() const { return process_.get(); }
+
+  // Promotes the process handle to full access if it hasn't already been done.
+  HANDLE process_promoted()
+  {
+    if (!process_promoted_)
+    {
+      // Duplicate restricted process handle for a full memory access handle.
+      HANDLE hAllAccessHandle = nullptr;
+      if (DuplicateHandle(GetCurrentProcess(),
+                           process_.get(),
+                           GetCurrentProcess(),
+                           &hAllAccessHandle,
+                           kXPProcessAllAccess,
+                           FALSE,
+                           0))
+      {
+        ScopedKernelHANDLE ScopedAllAccessHandle(hAllAccessHandle);
+        process_.swap(ScopedAllAccessHandle);
+        process_promoted_ = true;
+      }
+    }
+    return process_.get();
+  }
 
  private:
   void RegisterThreadPoolWaits(
@@ -231,6 +263,7 @@ class ClientData {
   ScopedKernelHANDLE non_crash_dump_requested_event_;
   ScopedKernelHANDLE non_crash_dump_completed_event_;
   ScopedKernelHANDLE process_;
+  bool process_promoted_;
   WinVMAddress crash_exception_information_address_;
   WinVMAddress non_crash_exception_information_address_;
   WinVMAddress debug_critical_section_address_;
@@ -245,6 +278,7 @@ ExceptionHandlerServer::ExceptionHandlerServer(bool persistent)
     : pipe_name_(),
       port_(CreateIoCompletionPort(INVALID_HANDLE_VALUE, nullptr, 0, 1)),
       first_pipe_instance_(),
+      owner_process_id_(kNoOwnerProcessId),
       clients_lock_(),
       clients_(),
       persistent_(persistent) {
@@ -267,18 +301,25 @@ void ExceptionHandlerServer::InitializeWithInheritedDataForInitialClient(
   DCHECK(!first_pipe_instance_.is_valid());
 
   first_pipe_instance_.reset(initial_client_data.first_pipe_instance());
+  owner_process_id_ = GetProcessId(initial_client_data.client_process());
+  PLOG_IF(FATAL, owner_process_id_ == 0) << "GetProcessId";
 
-  // TODO(scottmg): Vista+. Might need to pass through or possibly find an Nt*.
-  size_t bytes = sizeof(wchar_t) * _MAX_PATH + sizeof(FILE_NAME_INFO);
-  std::unique_ptr<uint8_t[]> data(new uint8_t[bytes]);
+  // Allocate buffer for FILE_NAME_INFO with maximum pipe name length.
+  // According to Windows documentation, pipe name strings are limited to 256
+  // characters: https://learn.microsoft.com/en-us/windows/win32/ipc/pipe-names
+  // FILE_NAME_INFO has a flexible array member (FileName) and provides an
+  // explicit FileNameLength field, so no null terminator is needed.
+  constexpr size_t kMaxPipeNameChars = 256;
+  auto data = base::HeapArray<uint8_t>::Uninit(
+      sizeof(FILE_NAME_INFO) + sizeof(wchar_t) * kMaxPipeNameChars);
   if (!GetFileInformationByHandleEx(first_pipe_instance_.get(),
                                     FileNameInfo,
-                                    data.get(),
-                                    static_cast<DWORD>(bytes))) {
+                                    data.data(),
+                                    static_cast<DWORD>(data.size()))) {
     PLOG(FATAL) << "GetFileInformationByHandleEx";
   }
   FILE_NAME_INFO* file_name_info =
-      reinterpret_cast<FILE_NAME_INFO*>(data.get());
+      reinterpret_cast<FILE_NAME_INFO*>(data.data());
   pipe_name_ =
       L"\\\\.\\pipe" + std::wstring(file_name_info->FileName,
                                     file_name_info->FileNameLength /
@@ -306,7 +347,7 @@ void ExceptionHandlerServer::InitializeWithInheritedDataForInitialClient(
 void ExceptionHandlerServer::Run(Delegate* delegate) {
   uint64_t shutdown_token = base::RandUint64();
   ScopedKernelHANDLE thread_handles[kPipeInstances];
-  for (size_t i = 0; i < base::size(thread_handles); ++i) {
+  for (size_t i = 0; i < std::size(thread_handles); ++i) {
     HANDLE pipe;
     if (first_pipe_instance_.is_valid()) {
       pipe = first_pipe_instance_.release();
@@ -324,7 +365,8 @@ void ExceptionHandlerServer::Run(Delegate* delegate) {
                                          delegate,
                                          &clients_lock_,
                                          &clients_,
-                                         shutdown_token);
+                                         shutdown_token,
+                                         owner_process_id_);
     thread_handles[i].reset(
         CreateThread(nullptr, 0, &PipeServiceProc, context, 0, nullptr));
     PCHECK(thread_handles[i].is_valid()) << "CreateThread";
@@ -358,7 +400,7 @@ void ExceptionHandlerServer::Run(Delegate* delegate) {
   }
 
   // Signal to the named pipe instances that they should terminate.
-  for (size_t i = 0; i < base::size(thread_handles); ++i) {
+  for (size_t i = 0; i < std::size(thread_handles); ++i) {
     ClientToServerMessage message;
     memset(&message, 0, sizeof(message));
     message.type = ClientToServerMessage::kShutdown;
@@ -385,6 +427,197 @@ void ExceptionHandlerServer::Run(Delegate* delegate) {
 void ExceptionHandlerServer::Stop() {
   // Post a null key (third argument) to trigger shutdown.
   PostQueuedCompletionStatus(port_.get(), 0, 0, nullptr);
+}
+
+static bool RuntimeMessageOriginIsOwner(
+    const internal::PipeServiceContext& service_context) {
+  if (service_context.owner_process_id() == kNoOwnerProcessId) {
+    // No owner is configured for prestarted named-pipe handlers.
+    return true;
+  }
+
+  if (service_context.owner_process_id() == 0) {
+    LOG(WARNING) << "rejecting runtime control message without owner pid";
+    return false;
+  }
+
+  decltype(GetNamedPipeClientProcessId)* get_named_pipe_client_process_id =
+      GetNamedPipeClientProcessIdFunction();
+  if (!get_named_pipe_client_process_id) {
+    // Match registration behavior on systems without peer PID support.
+    return true;
+  }
+
+  DWORD client_process_id = 0;
+  if (!get_named_pipe_client_process_id(service_context.pipe(),
+                                        &client_process_id)) {
+    PLOG(WARNING) << "GetNamedPipeClientProcessId";
+    return false;
+  }
+
+  if (client_process_id != service_context.owner_process_id()) {
+    LOG(WARNING) << "rejecting runtime control message from non-owner pid "
+                 << client_process_id;
+    return false;
+  }
+
+  return true;
+}
+
+static void WriteResponse(
+    const internal::PipeServiceContext& service_context,
+    const ServerToClientMessage& response = {}) {
+  if (LoggingWriteFile(service_context.pipe(), &response, sizeof(response)) &&
+      !FlushFileBuffers(service_context.pipe())) {
+    PLOG(ERROR) << "FlushFileBuffers";
+  }
+}
+
+static void HandleAddAttachmentV2(
+    const internal::PipeServiceContext& service_context,
+    const ClientToServerMessage& message) {
+  const uint32_t path_length_bytes = message.attachment_v2.path_length_bytes;
+
+  if (path_length_bytes <= sizeof(wchar_t) ||
+      path_length_bytes > kMaxPathBytes) {
+    LOG(ERROR) << "Invalid path length: " << path_length_bytes;
+    return;
+  }
+
+  if (path_length_bytes % sizeof(wchar_t) != 0) {
+    LOG(ERROR) << "Invalid path length: not aligned to wchar_t boundary";
+    return;
+  }
+
+  auto path_buffer =
+      base::HeapArray<wchar_t>::Uninit(path_length_bytes / sizeof(wchar_t));
+
+  if (!LoggingReadFileExactly(
+          service_context.pipe(), path_buffer.data(), path_length_bytes)) {
+    LOG(ERROR) << "Failed to read attachment path";
+    return;
+  }
+
+  path_buffer[path_buffer.size() - 1] = L'\0';
+
+  service_context.delegate()->ExceptionHandlerServerAttachmentAdded(
+      base::FilePath(std::wstring(path_buffer.data())));
+  WriteResponse(service_context);
+}
+
+static void HandleRemoveAttachmentV2(
+    const internal::PipeServiceContext& service_context,
+    const ClientToServerMessage& message) {
+  const uint32_t path_length_bytes = message.attachment_v2.path_length_bytes;
+
+  if (path_length_bytes <= sizeof(wchar_t) ||
+      path_length_bytes > kMaxPathBytes) {
+    LOG(ERROR) << "Invalid path length: " << path_length_bytes;
+    return;
+  }
+
+  if (path_length_bytes % sizeof(wchar_t) != 0) {
+    LOG(ERROR) << "Invalid path length: not aligned to wchar_t boundary";
+    return;
+  }
+
+  auto path_buffer =
+      base::HeapArray<wchar_t>::Uninit(path_length_bytes / sizeof(wchar_t));
+
+  if (!LoggingReadFileExactly(
+          service_context.pipe(), path_buffer.data(), path_length_bytes)) {
+    LOG(ERROR) << "Failed to read attachment path";
+    return;
+  }
+
+  path_buffer[path_buffer.size() - 1] = L'\0';
+
+  service_context.delegate()->ExceptionHandlerServerAttachmentRemoved(
+      base::FilePath(std::wstring(path_buffer.data())));
+  WriteResponse(service_context);
+}
+
+static bool ReadAttachment(
+    const internal::PipeServiceContext& service_context,
+    const ClientToServerMessage& message,
+    base::FilePath* attachment,
+    std::string* payload) {
+  const uint32_t path_length_bytes =
+      message.attachment_write.path_length_bytes;
+  const uint32_t payload_length_bytes =
+      message.attachment_write.payload_length_bytes;
+
+  if (path_length_bytes <= sizeof(wchar_t) ||
+      path_length_bytes > kMaxPathBytes ||
+      path_length_bytes % sizeof(wchar_t) != 0) {
+    LOG(ERROR) << "Invalid path length: " << path_length_bytes;
+    return false;
+  }
+  if (payload_length_bytes > kMaxAttachmentPayloadBytes) {
+    LOG(ERROR) << "Invalid attachment payload length: "
+               << payload_length_bytes;
+    return false;
+  }
+  if (payload_length_bytes > UINT32_MAX - path_length_bytes) {
+    LOG(ERROR) << "Invalid attachment write length";
+    return false;
+  }
+
+  std::wstring path(path_length_bytes / sizeof(wchar_t), L'\0');
+  if (!LoggingReadFileExactly(
+          service_context.pipe(), &path[0], path_length_bytes)) {
+    LOG(ERROR) << "Failed to read attachment path";
+    return false;
+  }
+  path.resize(path.size() - 1);
+
+  std::string data(payload_length_bytes, '\0');
+  if (payload_length_bytes > 0 &&
+      !LoggingReadFileExactly(
+          service_context.pipe(), &data[0], payload_length_bytes)) {
+    LOG(ERROR) << "Failed to read attachment payload";
+    return false;
+  }
+
+  *attachment = base::FilePath(path);
+  *payload = std::move(data);
+  return true;
+}
+
+static void HandleWriteAttachment(
+    const internal::PipeServiceContext& service_context,
+    const ClientToServerMessage& message) {
+  base::FilePath attachment;
+  std::string payload;
+  if (!ReadAttachment(
+          service_context, message, &attachment, &payload)) {
+    return;
+  }
+
+  // Acknowledge IPC payload acceptance before disk I/O. This message exists to
+  // offload potentially slow disk I/O from the client; waiting for the file
+  // write would make the client block on the work this API is meant to avoid.
+  WriteResponse(service_context);
+  service_context.delegate()->ExceptionHandlerServerAttachmentWritten(
+      attachment, payload);
+}
+
+static void HandleAppendAttachment(
+    const internal::PipeServiceContext& service_context,
+    const ClientToServerMessage& message) {
+  base::FilePath attachment;
+  std::string payload;
+  if (!ReadAttachment(
+          service_context, message, &attachment, &payload)) {
+    return;
+  }
+
+  // Acknowledge IPC payload acceptance before disk I/O. This message exists to
+  // offload potentially slow disk I/O from the client; waiting for the file
+  // append would make the client block on the work this API is meant to avoid.
+  WriteResponse(service_context);
+  service_context.delegate()->ExceptionHandlerServerAttachmentAppended(
+      attachment, payload);
 }
 
 // This function must be called with service_context.pipe() already connected to
@@ -428,6 +661,74 @@ bool ExceptionHandlerServer::ServiceClientConnection(
       // Handled below.
       break;
 
+    case ClientToServerMessage::kAddAttachment: {
+      if (!RuntimeMessageOriginIsOwner(service_context)) {
+        return false;
+      }
+      ServerToClientMessage shutdown_response = {};
+      service_context.delegate()->ExceptionHandlerServerAttachmentAdded(
+          base::FilePath(message.attachment.path));
+      LoggingWriteFile(service_context.pipe(),
+                       &shutdown_response,
+                       sizeof(shutdown_response));
+      return false;
+    }
+
+    case ClientToServerMessage::kRemoveAttachment: {
+      if (!RuntimeMessageOriginIsOwner(service_context)) {
+        return false;
+      }
+      ServerToClientMessage shutdown_response = {};
+      service_context.delegate()->ExceptionHandlerServerAttachmentRemoved(
+          base::FilePath(message.attachment.path));
+      LoggingWriteFile(service_context.pipe(),
+                       &shutdown_response,
+                       sizeof(shutdown_response));
+      return false;
+    }
+
+    case ClientToServerMessage::kAddAttachmentV2: {
+      if (!RuntimeMessageOriginIsOwner(service_context)) {
+        return false;
+      }
+      HandleAddAttachmentV2(service_context, message);
+      return false;
+    }
+
+    case ClientToServerMessage::kRemoveAttachmentV2: {
+      if (!RuntimeMessageOriginIsOwner(service_context)) {
+        return false;
+      }
+      HandleRemoveAttachmentV2(service_context, message);
+      return false;
+    }
+
+    case ClientToServerMessage::kWriteAttachment: {
+      if (!RuntimeMessageOriginIsOwner(service_context)) {
+        return false;
+      }
+      HandleWriteAttachment(service_context, message);
+      return false;
+    }
+
+    case ClientToServerMessage::kAppendAttachment: {
+      if (!RuntimeMessageOriginIsOwner(service_context)) {
+        return false;
+      }
+      HandleAppendAttachment(service_context, message);
+      return false;
+    }
+
+    case ClientToServerMessage::kRequestRetry: {
+      if (!RuntimeMessageOriginIsOwner(service_context)) {
+        return false;
+      }
+      ServerToClientMessage response = {};
+      service_context.delegate()->ExceptionHandlerServerRetryRequested();
+      LoggingWriteFile(service_context.pipe(), &response, sizeof(response));
+      return false;
+    }
+
     default:
       LOG(ERROR) << "unhandled message type: " << message.type;
       return false;
@@ -458,14 +759,14 @@ bool ExceptionHandlerServer::ServiceClientConnection(
   // the process, but the client will be able to, so we make a second attempt
   // having impersonated the client.
   HANDLE client_process = OpenProcess(
-      kXPProcessAllAccess, false, message.registration.client_process_id);
+      kXPProcessLimitedAccess, false, message.registration.client_process_id);
   if (!client_process) {
     if (!ImpersonateNamedPipeClient(service_context.pipe())) {
       PLOG(ERROR) << "ImpersonateNamedPipeClient";
       return false;
     }
     client_process = OpenProcess(
-        kXPProcessAllAccess, false, message.registration.client_process_id);
+        kXPProcessLimitedAccess, false, message.registration.client_process_id);
     PCHECK(RevertToSelf());
     if (!client_process) {
       LOG(ERROR) << "failed to open " << message.registration.client_process_id;
@@ -542,11 +843,11 @@ void __stdcall ExceptionHandlerServer::OnCrashDumpEvent(void* ctx, BOOLEAN) {
 
   // Capture the exception.
   unsigned int exit_code = client->delegate()->ExceptionHandlerServerException(
-      client->process(),
+      client->process_promoted(),
       client->crash_exception_information_address(),
       client->debug_critical_section_address());
 
-  SafeTerminateProcess(client->process(), exit_code);
+  SafeTerminateProcess(client->process_promoted(), exit_code);
 }
 
 // static
@@ -557,7 +858,7 @@ void __stdcall ExceptionHandlerServer::OnNonCrashDumpEvent(void* ctx, BOOLEAN) {
 
   // Capture the exception.
   client->delegate()->ExceptionHandlerServerException(
-      client->process(),
+      client->process_promoted(),
       client->non_crash_exception_information_address(),
       client->debug_critical_section_address());
 

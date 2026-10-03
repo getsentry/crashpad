@@ -1,4 +1,4 @@
-// Copyright 2015 The Crashpad Authors. All rights reserved.
+// Copyright 2015 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,8 +19,11 @@
 #include <sddl.h>
 #include <stddef.h>
 
-#include "base/cxx17_backports.h"
+#include <iterator>
+
+#include "base/check.h"
 #include "base/logging.h"
+#include "base/numerics/safe_conversions.h"
 #include "util/win/exception_handler_server.h"
 #include "util/win/loader_lock.h"
 #include "util/win/scoped_handle.h"
@@ -139,6 +142,71 @@ bool SendToCrashHandlerServer(const std::wstring& pipe_name,
   }
 }
 
+bool SendPayloadToCrashHandlerServer(
+    const std::wstring& pipe_name,
+    const ClientToServerMessage& message,
+    base::span<const uint8_t> head,
+    base::span<const uint8_t> tail,
+    ServerToClientMessage* response) {
+  // Retry CreateFile() in a loop (follows the logic in
+  // SendToCrashHandlerServer).
+  for (;;) {
+    ScopedFileHANDLE pipe(
+        CreateFile(pipe_name.c_str(),
+                   GENERIC_READ | GENERIC_WRITE,
+                   0,
+                   nullptr,
+                   OPEN_EXISTING,
+                   SECURITY_SQOS_PRESENT | SECURITY_IDENTIFICATION,
+                   nullptr));
+    if (!pipe.is_valid()) {
+      if (GetLastError() != ERROR_PIPE_BUSY) {
+        PLOG(ERROR) << "CreateFile";
+        return false;
+      }
+
+      if (!WaitNamedPipe(pipe_name.c_str(), NMPWAIT_WAIT_FOREVER)) {
+        PLOG(ERROR) << "WaitNamedPipe";
+        return false;
+      }
+
+      continue;
+    }
+
+    DWORD mode = PIPE_READMODE_MESSAGE;
+    if (!SetNamedPipeHandleState(pipe.get(), &mode, nullptr, nullptr)) {
+      PLOG(ERROR) << "SetNamedPipeHandleState";
+      return false;
+    }
+
+    if (!WriteFile(pipe.get(), &message, sizeof(message))) {
+      PLOG(ERROR) << "WriteFile (header)";
+      return false;
+    }
+
+    if (!head.empty() &&
+        !WriteFile(
+            pipe.get(), head.data(), base::checked_cast<DWORD>(head.size()))) {
+      PLOG(ERROR) << "WriteFile (payload head)";
+      return false;
+    }
+
+    if (!tail.empty() &&
+        !WriteFile(
+            pipe.get(), tail.data(), base::checked_cast<DWORD>(tail.size()))) {
+      PLOG(ERROR) << "WriteFile (payload tail)";
+      return false;
+    }
+
+    if (!ReadFile(pipe.get(), response, sizeof(*response))) {
+      PLOG(ERROR) << "ReadFile (response)";
+      return false;
+    }
+
+    return true;
+  }
+}
+
 HANDLE CreateNamedPipeInstance(const std::wstring& pipe_name,
                                bool first_instance) {
   SECURITY_ATTRIBUTES security_attributes;
@@ -209,8 +277,7 @@ const void* GetFallbackSecurityDescriptorForNamedPipeInstance(size_t* size) {
               ACL_REVISION,  // AclRevision.
               0,  // Sbz1.
               sizeof(kSecDescBlob.sacl),  // AclSize.
-              static_cast<WORD>(
-                  base::size(kSecDescBlob.sacl.ace)),  // AceCount.
+              static_cast<WORD>(std::size(kSecDescBlob.sacl.ace)),  // AceCount.
               0,  // Sbz2.
           },
 
@@ -231,8 +298,8 @@ const void* GetFallbackSecurityDescriptorForNamedPipeInstance(size_t* size) {
                   {
                       SID_REVISION,  // Revision.
                                      // SubAuthorityCount.
-                      static_cast<BYTE>(base::size(
-                          kSecDescBlob.sacl.ace[0].sid.SubAuthority)),
+                      static_cast<BYTE>(
+                          std::size(kSecDescBlob.sacl.ace[0].sid.SubAuthority)),
                       // IdentifierAuthority.
                       {SECURITY_MANDATORY_LABEL_AUTHORITY},
                       {SECURITY_MANDATORY_UNTRUSTED_RID},  // SubAuthority.
