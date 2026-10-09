@@ -18,7 +18,9 @@
 #include <string.h>
 #include <sys/types.h>
 
+#include <condition_variable>
 #include <iterator>
+#include <mutex>
 #include <utility>
 
 #include "base/check.h"
@@ -30,6 +32,8 @@
 #include "util/file/file_writer.h"
 #include "util/misc/tri_state.h"
 #include "util/misc/uuid.h"
+#include "util/stdlib/thread_safe_vector.h"
+#include "util/thread/worker_thread.h"
 #include "util/win/get_function.h"
 #include "util/win/handle.h"
 #include "util/win/registration_protocol_win.h"
@@ -66,12 +70,92 @@ HANDLE DuplicateEvent(HANDLE process, HANDLE event) {
 
 namespace internal {
 
+class AttachmentWriter final : public WorkerThread::Delegate {
+ public:
+  AttachmentWriter() : thread_(WorkerThread::kIndefiniteWait, this) {}
+
+  void Start(ExceptionHandlerServer::Delegate* delegate) {
+    delegate_ = delegate;
+    thread_.Start(WorkerThread::kIndefiniteWait);
+  }
+
+  bool Enqueue(base::FilePath attachment, std::string payload, bool append) {
+    const size_t size =
+        attachment.value().size() * sizeof(wchar_t) + payload.size();
+    std::lock_guard<std::mutex> lock(lock_);
+    if (submitted_ - completed_ >= kMaxPendingWrites ||
+        size > kMaxPendingBytes - bytes_) {
+      LOG(WARNING) << "attachment write queue full";
+      return false;
+    }
+    requests_.PushBack(
+        {std::move(attachment), std::move(payload), append, size});
+    bytes_ += size;
+    ++submitted_;
+    thread_.DoWorkNow();
+    return true;
+  }
+
+  void Flush() {
+    std::unique_lock<std::mutex> lock(lock_);
+    const uint64_t target = submitted_;
+    changed_.wait(lock, [this, target] { return completed_ >= target; });
+  }
+
+  void Stop() {
+    Flush();
+    thread_.Stop();
+  }
+
+ private:
+  static constexpr size_t kMaxPendingWrites = 1024;
+  static constexpr size_t kMaxPendingBytes = 2 * kMaxAttachmentPayloadBytes;
+
+  struct Request {
+    base::FilePath attachment;
+    std::string payload;
+    bool append;
+    size_t size;
+  };
+
+  void DoWork(const WorkerThread*) override {
+    for (auto& queued : requests_.Drain()) {
+      Request request = std::move(queued);
+
+      if (request.append) {
+        delegate_->ExceptionHandlerServerAttachmentAppended(request.attachment,
+                                                            request.payload);
+      } else {
+        delegate_->ExceptionHandlerServerAttachmentWritten(request.attachment,
+                                                           request.payload);
+      }
+
+      {
+        std::lock_guard<std::mutex> lock(lock_);
+        bytes_ -= request.size;
+        ++completed_;
+        changed_.notify_all();
+      }
+    }
+  }
+
+  std::mutex lock_;
+  std::condition_variable changed_;
+  ThreadSafeVector<Request> requests_;
+  size_t bytes_ = 0;
+  uint64_t submitted_ = 0;
+  uint64_t completed_ = 0;
+  ExceptionHandlerServer::Delegate* delegate_ = nullptr;  // weak
+  WorkerThread thread_;
+};
+
 //! \brief Context information for the named pipe handler threads.
 class PipeServiceContext {
  public:
   PipeServiceContext(HANDLE port,
                      HANDLE pipe,
                      ExceptionHandlerServer::Delegate* delegate,
+                     AttachmentWriter* attachment_writer,
                      base::Lock* clients_lock,
                      std::set<internal::ClientData*>* clients,
                      uint64_t shutdown_token,
@@ -79,6 +163,7 @@ class PipeServiceContext {
       : port_(port),
         pipe_(pipe),
         delegate_(delegate),
+        attachment_writer_(attachment_writer),
         clients_lock_(clients_lock),
         clients_(clients),
         shutdown_token_(shutdown_token),
@@ -90,6 +175,7 @@ class PipeServiceContext {
   HANDLE port() const { return port_; }
   HANDLE pipe() const { return pipe_.get(); }
   ExceptionHandlerServer::Delegate* delegate() const { return delegate_; }
+  AttachmentWriter* attachment_writer() const { return attachment_writer_; }
   base::Lock* clients_lock() const { return clients_lock_; }
   std::set<internal::ClientData*>* clients() const { return clients_; }
   uint64_t shutdown_token() const { return shutdown_token_; }
@@ -99,6 +185,7 @@ class PipeServiceContext {
   HANDLE port_;  // weak
   ScopedKernelHANDLE pipe_;
   ExceptionHandlerServer::Delegate* delegate_;  // weak
+  AttachmentWriter* attachment_writer_;  // weak
   base::Lock* clients_lock_;  // weak
   std::set<internal::ClientData*>* clients_;  // weak
   uint64_t shutdown_token_;
@@ -114,6 +201,7 @@ class ClientData {
  public:
   ClientData(HANDLE port,
              ExceptionHandlerServer::Delegate* delegate,
+             AttachmentWriter* attachment_writer,
              ScopedKernelHANDLE process,
              ScopedKernelHANDLE crash_dump_requested_event,
              ScopedKernelHANDLE non_crash_dump_requested_event,
@@ -130,6 +218,7 @@ class ClientData {
         lock_(),
         port_(port),
         delegate_(delegate),
+        attachment_writer_(attachment_writer),
         crash_dump_requested_event_(std::move(crash_dump_requested_event)),
         non_crash_dump_requested_event_(
             std::move(non_crash_dump_requested_event)),
@@ -160,6 +249,7 @@ class ClientData {
   base::Lock* lock() { return &lock_; }
   HANDLE port() const { return port_; }
   ExceptionHandlerServer::Delegate* delegate() const { return delegate_; }
+  AttachmentWriter* attachment_writer() const { return attachment_writer_; }
   HANDLE crash_dump_requested_event() const {
     return crash_dump_requested_event_.get();
   }
@@ -259,6 +349,7 @@ class ClientData {
   // Access to these fields must be guarded by lock_.
   HANDLE port_;  // weak
   ExceptionHandlerServer::Delegate* delegate_;  // weak
+  AttachmentWriter* attachment_writer_;  // weak
   ScopedKernelHANDLE crash_dump_requested_event_;
   ScopedKernelHANDLE non_crash_dump_requested_event_;
   ScopedKernelHANDLE non_crash_dump_completed_event_;
@@ -281,6 +372,7 @@ ExceptionHandlerServer::ExceptionHandlerServer(bool persistent)
       owner_process_id_(kNoOwnerProcessId),
       clients_lock_(),
       clients_(),
+      attachment_writer_(new internal::AttachmentWriter()),
       persistent_(persistent) {
 }
 
@@ -330,6 +422,7 @@ void ExceptionHandlerServer::InitializeWithInheritedDataForInitialClient(
     internal::ClientData* client = new internal::ClientData(
         port_.get(),
         delegate,
+        attachment_writer_.get(),
         ScopedKernelHANDLE(initial_client_data.client_process()),
         ScopedKernelHANDLE(initial_client_data.request_crash_dump()),
         ScopedKernelHANDLE(initial_client_data.request_non_crash_dump()),
@@ -345,6 +438,7 @@ void ExceptionHandlerServer::InitializeWithInheritedDataForInitialClient(
 }
 
 void ExceptionHandlerServer::Run(Delegate* delegate) {
+  attachment_writer_->Start(delegate);
   uint64_t shutdown_token = base::RandUint64();
   ScopedKernelHANDLE thread_handles[kPipeInstances];
   for (size_t i = 0; i < std::size(thread_handles); ++i) {
@@ -363,6 +457,7 @@ void ExceptionHandlerServer::Run(Delegate* delegate) {
         new internal::PipeServiceContext(port_.get(),
                                          pipe,
                                          delegate,
+                                         attachment_writer_.get(),
                                          &clients_lock_,
                                          &clients_,
                                          shutdown_token,
@@ -422,6 +517,7 @@ void ExceptionHandlerServer::Run(Delegate* delegate) {
       delete client;
     clients_.clear();
   }
+  attachment_writer_->Stop();
 }
 
 void ExceptionHandlerServer::Stop() {
@@ -500,6 +596,7 @@ static void HandleAddAttachmentV2(
 
   path_buffer[path_buffer.size() - 1] = L'\0';
 
+  service_context.attachment_writer()->Flush();
   service_context.delegate()->ExceptionHandlerServerAttachmentAdded(
       base::FilePath(std::wstring(path_buffer.data())));
   WriteResponse(service_context);
@@ -532,6 +629,7 @@ static void HandleRemoveAttachmentV2(
 
   path_buffer[path_buffer.size() - 1] = L'\0';
 
+  service_context.attachment_writer()->Flush();
   service_context.delegate()->ExceptionHandlerServerAttachmentRemoved(
       base::FilePath(std::wstring(path_buffer.data())));
   WriteResponse(service_context);
@@ -594,12 +692,11 @@ static void HandleWriteAttachment(
     return;
   }
 
-  // Acknowledge IPC payload acceptance before disk I/O. This message exists to
-  // offload potentially slow disk I/O from the client; waiting for the file
-  // write would make the client block on the work this API is meant to avoid.
-  WriteResponse(service_context);
-  service_context.delegate()->ExceptionHandlerServerAttachmentWritten(
-      attachment, payload);
+  // enqueue before acknowledging to preserve request order
+  if (service_context.attachment_writer()->Enqueue(
+          std::move(attachment), std::move(payload), false)) {
+    WriteResponse(service_context);
+  }
 }
 
 static void HandleAppendAttachment(
@@ -612,12 +709,10 @@ static void HandleAppendAttachment(
     return;
   }
 
-  // Acknowledge IPC payload acceptance before disk I/O. This message exists to
-  // offload potentially slow disk I/O from the client; waiting for the file
-  // append would make the client block on the work this API is meant to avoid.
-  WriteResponse(service_context);
-  service_context.delegate()->ExceptionHandlerServerAttachmentAppended(
-      attachment, payload);
+  if (service_context.attachment_writer()->Enqueue(
+          std::move(attachment), std::move(payload), true)) {
+    WriteResponse(service_context);
+  }
 }
 
 // This function must be called with service_context.pipe() already connected to
@@ -666,6 +761,7 @@ bool ExceptionHandlerServer::ServiceClientConnection(
         return false;
       }
       ServerToClientMessage shutdown_response = {};
+      service_context.attachment_writer()->Flush();
       service_context.delegate()->ExceptionHandlerServerAttachmentAdded(
           base::FilePath(message.attachment.path));
       LoggingWriteFile(service_context.pipe(),
@@ -679,6 +775,7 @@ bool ExceptionHandlerServer::ServiceClientConnection(
         return false;
       }
       ServerToClientMessage shutdown_response = {};
+      service_context.attachment_writer()->Flush();
       service_context.delegate()->ExceptionHandlerServerAttachmentRemoved(
           base::FilePath(message.attachment.path));
       LoggingWriteFile(service_context.pipe(),
@@ -780,6 +877,7 @@ bool ExceptionHandlerServer::ServiceClientConnection(
     client = new internal::ClientData(
         service_context.port(),
         service_context.delegate(),
+        service_context.attachment_writer(),
         ScopedKernelHANDLE(client_process),
         ScopedKernelHANDLE(
             CreateEvent(nullptr, false /* auto reset */, false, nullptr)),
@@ -841,6 +939,8 @@ void __stdcall ExceptionHandlerServer::OnCrashDumpEvent(void* ctx, BOOLEAN) {
   internal::ClientData* client = reinterpret_cast<internal::ClientData*>(ctx);
   base::AutoLock lock(*client->lock());
 
+  client->attachment_writer()->Flush();
+
   // Capture the exception.
   unsigned int exit_code = client->delegate()->ExceptionHandlerServerException(
       client->process_promoted(),
@@ -855,6 +955,8 @@ void __stdcall ExceptionHandlerServer::OnNonCrashDumpEvent(void* ctx, BOOLEAN) {
   // This function is executed on the thread pool.
   internal::ClientData* client = reinterpret_cast<internal::ClientData*>(ctx);
   base::AutoLock lock(*client->lock());
+
+  client->attachment_writer()->Flush();
 
   // Capture the exception.
   client->delegate()->ExceptionHandlerServerException(

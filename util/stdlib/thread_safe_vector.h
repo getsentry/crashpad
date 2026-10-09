@@ -43,6 +43,12 @@ class ThreadSafeVector {
     vector_.push_back(element);
   }
 
+  //! \brief Wraps `std::vector<>::%push_back()`.
+  void PushBack(T&& element) {
+    base::AutoLock lock_owner(lock_);
+    vector_.push_back(std::move(element));
+  }
+
   //! \brief Atomically clears the underlying vector and returns its previous
   //!     contents.
   std::vector<T> Drain() {

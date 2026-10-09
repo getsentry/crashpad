@@ -20,6 +20,8 @@
 #include <stddef.h>
 
 #include <iterator>
+#include <memory>
+#include <vector>
 
 #include "base/check.h"
 #include "base/logging.h"
@@ -32,6 +34,97 @@
 namespace crashpad {
 
 namespace {
+
+constexpr DWORD kAttachmentTimeoutMs = 100;
+
+DWORD RemainingTime(ULONGLONG deadline) {
+  const ULONGLONG now = GetTickCount64();
+  return now < deadline ? static_cast<DWORD>(deadline - now) : 0;
+}
+
+struct PayloadTransaction {
+  explicit PayloadTransaction(ScopedFileHANDLE handle)
+      : pipe(std::move(handle)),
+        event(CreateEvent(nullptr, true, false, nullptr)),
+        cleanup(CreateThreadpoolWait(&Cleanup, this, nullptr)) {}
+
+  ~PayloadTransaction() {
+    if (cleanup) {
+      CloseThreadpoolWait(cleanup);
+    }
+  }
+
+  static void CALLBACK Cleanup(PTP_CALLBACK_INSTANCE,
+                               void* context,
+                               PTP_WAIT,
+                               TP_WAIT_RESULT) {
+    delete static_cast<PayloadTransaction*>(context);
+  }
+
+  ScopedFileHANDLE pipe;
+  ScopedKernelHANDLE event;
+  OVERLAPPED overlapped = {};
+  std::vector<uint8_t> buffer;
+  PTP_WAIT cleanup;
+};
+
+bool TransferPayload(std::unique_ptr<PayloadTransaction>& transaction,
+                     const void* data,
+                     DWORD size,
+                     ULONGLONG deadline) {
+  if (RemainingTime(deadline) == 0) {
+    SetLastError(ERROR_SEM_TIMEOUT);
+    return false;
+  }
+
+  transaction->buffer.resize(size);
+  if (data) {
+    memcpy(transaction->buffer.data(), data, size);
+  }
+  transaction->overlapped = {};
+  transaction->overlapped.hEvent = transaction->event.get();
+  ResetEvent(transaction->event.get());
+  DWORD transferred = 0;
+  const BOOL result = data ? ::WriteFile(transaction->pipe.get(),
+                                         transaction->buffer.data(),
+                                         size,
+                                         &transferred,
+                                         &transaction->overlapped)
+                           : ::ReadFile(transaction->pipe.get(),
+                                        transaction->buffer.data(),
+                                        size,
+                                        &transferred,
+                                        &transaction->overlapped);
+  if (!result) {
+    if (GetLastError() != ERROR_IO_PENDING) {
+      return false;
+    }
+    const DWORD wait =
+        WaitForSingleObject(transaction->event.get(), RemainingTime(deadline));
+    if (wait != WAIT_OBJECT_0) {
+      const DWORD error =
+          wait == WAIT_TIMEOUT ? ERROR_SEM_TIMEOUT : GetLastError();
+      // retain the buffer and OVERLAPPED until cancellation completes
+      PayloadTransaction* pending = transaction.release();
+      CancelIoEx(pending->pipe.get(), &pending->overlapped);
+      SetThreadpoolWait(pending->cleanup, pending->event.get(), nullptr);
+      SetLastError(error);
+      return false;
+    }
+    if (!GetOverlappedResult(transaction->pipe.get(),
+                             &transaction->overlapped,
+                             &transferred,
+                             false)) {
+      return false;
+    }
+  }
+  if (transferred == 0 || (data && transferred != size)) {
+    SetLastError(ERROR_INVALID_DATA);
+    return false;
+  }
+  transaction->buffer.resize(transferred);
+  return true;
+}
 
 void* GetSecurityDescriptorWithUser(const wchar_t* sddl_string, size_t* size) {
   if (size)
@@ -148,6 +241,7 @@ bool SendPayloadToCrashHandlerServer(
     base::span<const uint8_t> head,
     base::span<const uint8_t> tail,
     ServerToClientMessage* response) {
+  const ULONGLONG deadline = GetTickCount64() + kAttachmentTimeoutMs;
   // Retry CreateFile() in a loop (follows the logic in
   // SendToCrashHandlerServer).
   for (;;) {
@@ -157,7 +251,8 @@ bool SendPayloadToCrashHandlerServer(
                    0,
                    nullptr,
                    OPEN_EXISTING,
-                   SECURITY_SQOS_PRESENT | SECURITY_IDENTIFICATION,
+                   SECURITY_SQOS_PRESENT | SECURITY_IDENTIFICATION |
+                       FILE_FLAG_OVERLAPPED,
                    nullptr));
     if (!pipe.is_valid()) {
       if (GetLastError() != ERROR_PIPE_BUSY) {
@@ -165,7 +260,14 @@ bool SendPayloadToCrashHandlerServer(
         return false;
       }
 
-      if (!WaitNamedPipe(pipe_name.c_str(), NMPWAIT_WAIT_FOREVER)) {
+      const DWORD remaining = RemainingTime(deadline);
+      // zero selects the server default timeout instead of an immediate timeout
+      if (remaining == 0) {
+        SetLastError(ERROR_SEM_TIMEOUT);
+        PLOG(WARNING) << "attachment IPC timeout";
+        return false;
+      }
+      if (!WaitNamedPipe(pipe_name.c_str(), remaining)) {
         PLOG(ERROR) << "WaitNamedPipe";
         return false;
       }
@@ -179,30 +281,41 @@ bool SendPayloadToCrashHandlerServer(
       return false;
     }
 
-    if (!WriteFile(pipe.get(), &message, sizeof(message))) {
+    auto transaction = std::make_unique<PayloadTransaction>(std::move(pipe));
+    if (!transaction->event.is_valid() || !transaction->cleanup) {
+      PLOG(ERROR) << "attachment IPC initialization";
+      return false;
+    }
+
+    if (!TransferPayload(transaction, &message, sizeof(message), deadline)) {
       PLOG(ERROR) << "WriteFile (header)";
       return false;
     }
 
     if (!head.empty() &&
-        !WriteFile(
-            pipe.get(), head.data(), base::checked_cast<DWORD>(head.size()))) {
+        !TransferPayload(transaction,
+                         head.data(),
+                         base::checked_cast<DWORD>(head.size()),
+                         deadline)) {
       PLOG(ERROR) << "WriteFile (payload head)";
       return false;
     }
 
     if (!tail.empty() &&
-        !WriteFile(
-            pipe.get(), tail.data(), base::checked_cast<DWORD>(tail.size()))) {
+        !TransferPayload(transaction,
+                         tail.data(),
+                         base::checked_cast<DWORD>(tail.size()),
+                         deadline)) {
       PLOG(ERROR) << "WriteFile (payload tail)";
       return false;
     }
 
-    if (!ReadFile(pipe.get(), response, sizeof(*response))) {
+    if (!TransferPayload(transaction, nullptr, sizeof(*response), deadline)) {
       PLOG(ERROR) << "ReadFile (response)";
       return false;
     }
 
+    memcpy(response, transaction->buffer.data(), transaction->buffer.size());
     return true;
   }
 }

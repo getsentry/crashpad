@@ -15,6 +15,7 @@
 #ifndef CRASHPAD_UTIL_WIN_EXCEPTION_HANDLER_SERVER_H_
 #define CRASHPAD_UTIL_WIN_EXCEPTION_HANDLER_SERVER_H_
 
+#include <memory>
 #include <set>
 #include <string>
 
@@ -29,6 +30,7 @@ namespace crashpad {
 namespace internal {
 class PipeServiceContext;
 class ClientData;
+class AttachmentWriter;
 }  // namespace internal
 
 //! \brief Runs the main exception-handling server in Crashpad's handler
@@ -160,6 +162,8 @@ class ExceptionHandlerServer {
 
   base::Lock clients_lock_;
   std::set<internal::ClientData*> clients_;
+
+  std::unique_ptr<internal::AttachmentWriter> attachment_writer_;
 
   bool persistent_;
 };
