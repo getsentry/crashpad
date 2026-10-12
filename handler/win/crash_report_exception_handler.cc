@@ -177,6 +177,7 @@ unsigned int CrashReportExceptionHandler::ExceptionHandlerServerException(
       CrashReportDatabase::Envelope envelope(new_report->ReportID());
       {
         base::AutoLock scoped_lock(attachments_lock_);
+        WritePendingAttachments();
         if (envelope.Initialize(*crash_envelope_)) {
           std::vector<base::FilePath> attachments(startup_attachments_);
           attachments.insert(attachments.end(),
