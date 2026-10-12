@@ -1,4 +1,4 @@
-// Copyright 2017 The Crashpad Authors. All rights reserved.
+// Copyright 2017 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -33,9 +33,9 @@ bool FileModificationTime(const base::FilePath& path, timespec* mtime) {
     return false;
   }
 
-#if defined(OS_APPLE)
+#if BUILDFLAG(IS_APPLE)
   *mtime = st.st_mtimespec;
-#elif defined(OS_ANDROID)
+#elif BUILDFLAG(IS_ANDROID)
   // This is needed to compile with traditional NDK headers.
   mtime->tv_sec = st.st_mtime;
   mtime->tv_nsec = st.st_mtime_nsec;
