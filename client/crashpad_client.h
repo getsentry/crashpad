@@ -889,12 +889,12 @@ class CrashpadClient {
   //! delay.
   void RequestRetry();
 
- private:
 #if BUILDFLAG(IS_WIN) || DOXYGEN
   //!  \brief Registers process handlers for the client.
   void RegisterHandlers();
 #endif
 
+ private:
 #if BUILDFLAG(IS_APPLE)
   base::apple::ScopedMachSendRight exception_port_;
 #elif BUILDFLAG(IS_WIN)

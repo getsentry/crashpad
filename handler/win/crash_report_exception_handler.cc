@@ -126,6 +126,7 @@ unsigned int CrashReportExceptionHandler::ExceptionHandlerServerException(
 
     {
       base::AutoLock scoped_lock(attachments_lock_);
+      WritePendingAttachments();
       std::vector<base::FilePath> all_attachments(startup_attachments_);
       all_attachments.insert(all_attachments.end(),
                              user_attachments_.begin(),
@@ -176,6 +177,7 @@ unsigned int CrashReportExceptionHandler::ExceptionHandlerServerException(
       CrashReportDatabase::Envelope envelope(new_report->ReportID());
       {
         base::AutoLock scoped_lock(attachments_lock_);
+        WritePendingAttachments();
         if (envelope.Initialize(*crash_envelope_)) {
           std::vector<base::FilePath> attachments(startup_attachments_);
           attachments.insert(attachments.end(),
@@ -284,14 +286,7 @@ void CrashReportExceptionHandler::ExceptionHandlerServerAttachmentWritten(
     return;
   }
 
-  FileWriter writer;
-  if (!writer.Open(attachment,
-                   FileWriteMode::kTruncateOrCreate,
-                   FilePermissions::kOwnerOnly) ||
-      !writer.Write(data.data(), data.size())) {
-    LOG(ERROR) << "failed to write attachment " << attachment;
-    return;
-  }
+  pending_attachments_[attachment] = {true, data};
 }
 
 void CrashReportExceptionHandler::ExceptionHandlerServerAttachmentAppended(
@@ -303,15 +298,7 @@ void CrashReportExceptionHandler::ExceptionHandlerServerAttachmentAppended(
     return;
   }
 
-  FileWriter writer;
-  if (!writer.Open(attachment,
-                   FileWriteMode::kReuseOrCreate,
-                   FilePermissions::kOwnerOnly) ||
-      writer.Seek(0, SEEK_END) < 0 ||
-      !writer.Write(data.data(), data.size())) {
-    LOG(ERROR) << "failed to write attachment " << attachment;
-    return;
-  }
+  pending_attachments_[attachment].data += data;
 }
 
 void CrashReportExceptionHandler::ExceptionHandlerServerAttachmentRemoved(
@@ -338,6 +325,24 @@ void CrashReportExceptionHandler::ExceptionHandlerServerRetryRequested() {
   if (upload_thread_) {
     upload_thread_->RetryPending();
   }
+}
+
+void CrashReportExceptionHandler::WritePendingAttachments() {
+  attachments_lock_.AssertAcquired();
+  for (const auto& entry : pending_attachments_) {
+    const auto& attachment = entry.first;
+    const auto& pending = entry.second;
+    FileWriter writer;
+    if (!writer.Open(attachment,
+                     pending.truncate ? FileWriteMode::kTruncateOrCreate
+                                      : FileWriteMode::kReuseOrCreate,
+                     FilePermissions::kOwnerOnly) ||
+        (!pending.truncate && writer.Seek(0, SEEK_END) < 0) ||
+        !writer.Write(pending.data.data(), pending.data.size())) {
+      LOG(ERROR) << "failed to write attachment " << attachment;
+    }
+  }
+  pending_attachments_.clear();
 }
 
 }  // namespace crashpad
