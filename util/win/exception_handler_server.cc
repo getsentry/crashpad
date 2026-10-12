@@ -594,12 +594,11 @@ static void HandleWriteAttachment(
     return;
   }
 
-  // Acknowledge IPC payload acceptance before disk I/O. This message exists to
-  // offload potentially slow disk I/O from the client; waiting for the file
-  // write would make the client block on the work this API is meant to avoid.
-  WriteResponse(service_context);
   service_context.delegate()->ExceptionHandlerServerAttachmentWritten(
       attachment, payload);
+  // The delegate buffers the payload before acknowledgment. Disk writes happen
+  // when a report is built.
+  WriteResponse(service_context);
 }
 
 static void HandleAppendAttachment(
@@ -612,12 +611,11 @@ static void HandleAppendAttachment(
     return;
   }
 
-  // Acknowledge IPC payload acceptance before disk I/O. This message exists to
-  // offload potentially slow disk I/O from the client; waiting for the file
-  // append would make the client block on the work this API is meant to avoid.
-  WriteResponse(service_context);
   service_context.delegate()->ExceptionHandlerServerAttachmentAppended(
       attachment, payload);
+  // The delegate buffers the payload before acknowledgment. Disk writes happen
+  // when a report is built.
+  WriteResponse(service_context);
 }
 
 // This function must be called with service_context.pipe() already connected to

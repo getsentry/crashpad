@@ -95,9 +95,15 @@ class CrashReportExceptionHandler final
   void ExceptionHandlerServerRetryRequested() override;
 
  private:
+  struct PendingAttachment {
+    bool truncate = false;
+    std::string data;
+  };
+
   bool HasStartupAttachment(const base::FilePath& attachment) const;
   bool HasUserAttachment(const base::FilePath& attachment) const;
   bool IsWritableAttachment(const base::FilePath& attachment) const;
+  void WritePendingAttachments();
 
   CrashReportDatabase* database_;  // weak
   CrashReportUploadThread* upload_thread_;  // weak
@@ -105,6 +111,7 @@ class CrashReportExceptionHandler final
   base::Lock attachments_lock_;
   std::vector<base::FilePath> startup_attachments_;
   std::vector<base::FilePath> user_attachments_;
+  std::map<base::FilePath, PendingAttachment> pending_attachments_;
   const base::FilePath* screenshot_;  // weak
   const bool wait_for_upload_;
   const base::FilePath* crash_reporter_;  // weak
