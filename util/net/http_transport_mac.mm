@@ -272,31 +272,35 @@ bool HTTPTransportMac::ExecuteProxyRequest(NSMutableURLRequest* request,
     NSURLSessionConfiguration* sessionConfig =
         [NSURLSessionConfiguration ephemeralSessionConfiguration];
 
-    std::string scheme, host, port, rest_ignored;
-    CrackURL(proxy, &scheme, &host, &port, &rest_ignored);
-    NSString* schemeNS = base::SysUTF8ToNSString(scheme);
-    NSString* hostNS = base::SysUTF8ToNSString(host);
-    NSNumber* proxy_port = @(std::stoi(port));
+    // `<empty>` means no proxy, as in the libcurl transport. An empty
+    // dictionary disables the proxy, whereas nil uses the system settings.
+    NSDictionary* proxyDict = @{};
 
-    NSDictionary* proxyDict;
+    if (proxy != "<empty>/") {
+      std::string scheme, host, port, rest_ignored;
+      CrackURL(proxy, &scheme, &host, &port, &rest_ignored);
+      NSString* schemeNS = base::SysUTF8ToNSString(scheme);
+      NSString* hostNS = base::SysUTF8ToNSString(host);
+      NSNumber* proxy_port = @(std::stoi(port));
 
-    if ([schemeNS isEqualToString:@"http"] || [schemeNS isEqualToString:@"https"]) {
-        // The keys in this dictionary refer to the target URL,
-        // whereas `schemeNS` refers to the proxy URL.
-        proxyDict = @{
-          @"HTTPEnable" : @YES,
-          @"HTTPPort" : proxy_port,
-          @"HTTPProxy" : hostNS,
-          @"HTTPSEnable" : @YES,
-          @"HTTPSPort" : proxy_port,
-          @"HTTPSProxy" : hostNS
-        };
-    } else if ([schemeNS isEqualToString:@"socks5"]) {
-        proxyDict = @{
-          @"SOCKSEnable" : @YES,
-          @"SOCKSPort" : proxy_port,
-          @"SOCKSProxy" : hostNS
-        };
+      if ([schemeNS isEqualToString:@"http"] || [schemeNS isEqualToString:@"https"]) {
+          // The keys in this dictionary refer to the target URL,
+          // whereas `schemeNS` refers to the proxy URL.
+          proxyDict = @{
+            @"HTTPEnable" : @YES,
+            @"HTTPPort" : proxy_port,
+            @"HTTPProxy" : hostNS,
+            @"HTTPSEnable" : @YES,
+            @"HTTPSPort" : proxy_port,
+            @"HTTPSProxy" : hostNS
+          };
+      } else if ([schemeNS isEqualToString:@"socks5"]) {
+          proxyDict = @{
+            @"SOCKSEnable" : @YES,
+            @"SOCKSPort" : proxy_port,
+            @"SOCKSProxy" : hostNS
+          };
+      }
     }
     sessionConfig.connectionProxyDictionary = proxyDict;
     NSURLSession* session =
