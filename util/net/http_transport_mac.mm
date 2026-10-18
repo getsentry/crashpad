@@ -345,17 +345,13 @@ bool HTTPTransportMac::ExecuteProxyRequest(NSMutableURLRequest* request,
 
     if (task == nil) {
       LOG(ERROR) << "Failed to create upload task.";
+      [session invalidateAndCancel];
       return false;
     }
 
     [task resume];
-
-    if (0 !=
-        dispatch_semaphore_wait(
-            semaphore, dispatch_time(DISPATCH_TIME_NOW, 10 * NSEC_PER_SEC))) {
-      LOG(ERROR) << "Upload task semaphore wait timed out";
-      sync_rv = false;
-    }
+    dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
+    [session finishTasksAndInvalidate];
   }
   return sync_rv;
 }
