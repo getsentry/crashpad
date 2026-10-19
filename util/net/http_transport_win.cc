@@ -161,6 +161,13 @@ bool HTTPTransportWin::ExecuteSynchronously(std::string* response_body) {
                                           base::UTF8ToWide(proxy).c_str(),
                                           WINHTTP_NO_PROXY_BYPASS,
                                           0));
+  } else if (http_proxy() == "<empty>") {
+    // `<empty>` means no proxy, as in the libcurl transport
+    session = ScopedHINTERNET(WinHttpOpen(base::UTF8ToWide(UserAgent()).c_str(),
+                                          WINHTTP_ACCESS_TYPE_NO_PROXY,
+                                          WINHTTP_NO_PROXY_NAME,
+                                          WINHTTP_NO_PROXY_BYPASS,
+                                          0));
   } else {
 #if _WIN32_WINNT >= 0x0603
     session = ScopedHINTERNET(WinHttpOpen(base::UTF8ToWide(UserAgent()).c_str(),
