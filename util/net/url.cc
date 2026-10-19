@@ -1,4 +1,4 @@
-// Copyright 2017 The Crashpad Authors. All rights reserved.
+// Copyright 2017 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -53,6 +53,7 @@ bool CrackURL(const std::string& url,
   size_t host_start;
   static constexpr const char kHttp[] = "http://";
   static constexpr const char kHttps[] = "https://";
+  static constexpr const char kSocks[] = "socks5://";
   if (url.compare(0, strlen(kHttp), kHttp) == 0) {
     result_scheme = "http";
     result_port = "80";
@@ -61,8 +62,12 @@ bool CrackURL(const std::string& url,
     result_scheme = "https";
     result_port = "443";
     host_start = strlen(kHttps);
+  } else if (url.compare(0, strlen(kSocks), kSocks) == 0) {
+    result_scheme = "socks5";
+    result_port = "1080";
+    host_start = strlen(kSocks);
   } else {
-    LOG(ERROR) << "expecting http or https";
+    LOG(ERROR) << "expecting http, https or socks5";
     return false;
   }
 

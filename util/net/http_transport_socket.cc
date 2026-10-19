@@ -1,4 +1,4 @@
-// Copyright 2018 The Crashpad Authors. All rights reserved.
+// Copyright 2018 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,23 +12,25 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "util/net/http_transport.h"
-
 #include <fcntl.h>
 #include <netdb.h>
 #include <poll.h>
 #include <string.h>
 #include <sys/socket.h>
 
-#include "base/cxx17_backports.h"
+#include <iterator>
+
+#include "base/check_op.h"
 #include "base/logging.h"
 #include "base/numerics/safe_conversions.h"
 #include "base/posix/eintr_wrapper.h"
 #include "base/scoped_generic.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/stringprintf.h"
+#include "build/build_config.h"
 #include "util/file/file_io.h"
 #include "util/net/http_body.h"
+#include "util/net/http_transport.h"
 #include "util/net/url.h"
 #include "util/stdlib/string_number_conversion.h"
 #include "util/string/split_string.h"
@@ -43,6 +45,8 @@ namespace {
 
 constexpr const char kCRLFTerminator[] = "\r\n";
 
+class Stream;
+
 class HTTPTransportSocket final : public HTTPTransport {
  public:
   HTTPTransportSocket() = default;
@@ -53,6 +57,9 @@ class HTTPTransportSocket final : public HTTPTransport {
   ~HTTPTransportSocket() override = default;
 
   bool ExecuteSynchronously(std::string* response_body) override;
+
+ private:
+  bool ReadResponse(Stream* stream, std::string* response_body);
 };
 
 struct ScopedAddrinfoTraits {
@@ -127,13 +134,13 @@ class SSLStream : public Stream {
         return false;
       }
     } else {
-#if defined(OS_LINUX) || defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
       if (SSL_CTX_load_verify_locations(
               ctx_.get(), nullptr, "/etc/ssl/certs") <= 0) {
         LOG(ERROR) << "SSL_CTX_load_verify_locations";
         return false;
       }
-#elif defined(OS_FUCHSIA)
+#elif BUILDFLAG(IS_FUCHSIA)
       if (SSL_CTX_load_verify_locations(
               ctx_.get(), "/config/ssl/cert.pem", nullptr) <= 0) {
         LOG(ERROR) << "SSL_CTX_load_verify_locations";
@@ -331,11 +338,15 @@ base::ScopedFD CreateSocket(const std::string& hostname,
 
 bool WriteRequest(Stream* stream,
                   const std::string& method,
+                  const std::string& hostname,
                   const std::string& resource,
                   const HTTPHeaders& headers,
                   HTTPBodyStream* body_stream) {
-  std::string request_line = base::StringPrintf(
-      "%s %s HTTP/1.0\r\n", method.c_str(), resource.c_str());
+  std::string request_line =
+      base::StringPrintf("%s %s HTTP/1.0\r\nHost: %s\r\n",
+                         method.c_str(),
+                         resource.c_str(),
+                         hostname.c_str());
   if (!stream->LoggingWrite(request_line.data(), request_line.size()))
     return false;
 
@@ -370,7 +381,7 @@ bool WriteRequest(Stream* stream,
 
   FileOperationResult data_bytes;
   do {
-    constexpr size_t kCRLFSize = base::size(kCRLFTerminator) - 1;
+    constexpr size_t kCRLFSize = std::size(kCRLFTerminator) - 1;
     struct __attribute__((packed)) {
       char size[8];
       char crlf[2];
@@ -457,7 +468,7 @@ bool StartsWith(const std::string& str, const char* with, size_t len) {
   return str.compare(0, len, with) == 0;
 }
 
-bool ReadResponseLine(Stream* stream) {
+bool ReadResponseLine(Stream* stream, unsigned int* status_code) {
   std::string response_line;
   if (!ReadLine(stream, &response_line)) {
     LOG(ERROR) << "ReadLine";
@@ -471,10 +482,11 @@ bool ReadResponseLine(Stream* stream) {
       response_line.at(strlen(kHttp10) + 3) != ' ') {
     return false;
   }
-  unsigned int http_status = 0;
-  return base::StringToUint(response_line.substr(strlen(kHttp10), 3),
-                            &http_status) &&
-         http_status >= 200 && http_status <= 203;
+  if (!base::StringToUint(response_line.substr(strlen(kHttp10), 3),
+                          status_code)) {
+    return false;
+  }
+  return true;
 }
 
 bool ReadResponseHeaders(Stream* stream, HTTPHeaders* headers) {
@@ -508,10 +520,13 @@ bool ReadContentChunked(Stream* stream, std::string* body) {
   return false;
 }
 
-bool ReadResponse(Stream* stream, std::string* response_body) {
+bool HTTPTransportSocket::ReadResponse(Stream* stream,
+                                       std::string* response_body) {
   response_body->clear();
 
-  if (!ReadResponseLine(stream)) {
+  unsigned int status_code = 0;
+  if (!ReadResponseLine(stream, &status_code) ||
+      !HandleHTTPStatus(status_code)) {
     return false;
   }
 
@@ -577,8 +592,12 @@ bool HTTPTransportSocket::ExecuteSynchronously(std::string* response_body) {
   std::unique_ptr<Stream> stream(std::make_unique<FdStream>(sock.get()));
 #endif  // CRASHPAD_USE_BORINGSSL
 
-  if (!WriteRequest(
-          stream.get(), method(), resource, headers(), body_stream())) {
+  if (!WriteRequest(stream.get(),
+                    method(),
+                    hostname,
+                    resource,
+                    headers(),
+                    body_stream())) {
     return false;
   }
 
