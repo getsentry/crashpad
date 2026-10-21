@@ -1,13 +1,16 @@
 # Sentry Modifications
 
-- File attachments support for MacOS and Windows. Based on changes made in
+- File attachments support for Linux, macOS, and Windows. Based on changes made in
   https://github.com/Youw/crashpad/, distributed with Apache 2.0 License.
-- Add `throws` declaration to `memfd_create` for compatibility with different
-  libc versions.
 - Build System Changes Listed Below.
 - MinGW build support.
 - Screenshot support for Windows.
 - C++17 standard requirement (upstream uses C++20 or newer).
+- Runtime attachment updates via IPC.
+- External crash reporter support.
+- Optional client-side stack traces.
+- Configurable stack capture limits.
+- Upload retries and wait-for-upload support.
 
 # Build System Changes
 
