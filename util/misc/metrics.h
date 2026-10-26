@@ -1,4 +1,4 @@
-// Copyright 2016 The Crashpad Authors. All rights reserved.
+// Copyright 2016 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@
 #include "build/build_config.h"
 #include "util/file/file_io.h"
 
-#if defined(OS_IOS)
+#if BUILDFLAG(IS_IOS)
 #include "util/ios/ios_intermediate_dump_format.h"
 #endif
 
@@ -62,6 +62,12 @@ class Metrics {
 
   //! \brief Reports on a crash upload attempt, and if it succeeded.
   static void CrashUploadAttempted(bool successful);
+
+#if BUILDFLAG(IS_APPLE) || DOXYGEN
+  //! \brief Records error codes from
+  //!     `+[NSURLConnection sendSynchronousRequest:returningResponse:error:]`.
+  static void CrashUploadErrorCode(int error_code);
+#endif
 
   //! \brief Values for CrashUploadSkipped().
   //!
@@ -207,7 +213,7 @@ class Metrics {
   //! This is currently only reported on Windows.
   static void HandlerCrashed(uint32_t exception_code);
 
-#if defined(OS_IOS) || DOXYGEN
+#if BUILDFLAG(IS_IOS) || DOXYGEN
   //! \brief Records a missing key from an intermediate dump.
   static void MissingIntermediateDumpKey(
       const internal::IntermediateDumpKey& key);

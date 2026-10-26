@@ -1,4 +1,4 @@
-// Copyright 2017 The Crashpad Authors. All rights reserved.
+// Copyright 2017 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -30,7 +30,7 @@
 #include "util/misc/from_pointer_cast.h"
 #include "util/process/process_memory_native.h"
 
-#if defined(OS_ANDROID) || defined(OS_LINUX) || defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
 #include "test/linux/fake_ptrace_connection.h"
 #endif
 
@@ -43,6 +43,7 @@ constexpr TriState kSystemCrashReporterForwarding = TriState::kDisabled;
 constexpr TriState kGatherIndirectlyReferencedMemory = TriState::kUnset;
 
 constexpr uint32_t kIndirectlyReferencedMemoryCap = 42;
+constexpr uint32_t kMaxStackCaptureSize = 64 * 1024;
 
 class ScopedUnsetCrashpadInfo {
  public:
@@ -57,6 +58,7 @@ class ScopedUnsetCrashpadInfo {
     crashpad_info_->set_system_crash_reporter_forwarding(TriState::kUnset);
     crashpad_info_->set_gather_indirectly_referenced_memory(TriState::kUnset,
                                                             0);
+    crashpad_info_->set_max_stack_capture_size(0);
     crashpad_info_->set_extra_memory_ranges(nullptr);
     crashpad_info_->set_simple_annotations(nullptr);
     crashpad_info_->set_annotations_list(nullptr);
@@ -79,6 +81,7 @@ class CrashpadInfoTestDataSetup {
     info->set_system_crash_reporter_forwarding(kSystemCrashReporterForwarding);
     info->set_gather_indirectly_referenced_memory(
         kGatherIndirectlyReferencedMemory, kIndirectlyReferencedMemoryCap);
+    info->set_max_stack_capture_size(kMaxStackCaptureSize);
   }
 
   CrashpadInfoTestDataSetup(const CrashpadInfoTestDataSetup&) = delete;
@@ -109,7 +112,7 @@ void ExpectCrashpadInfo(ProcessType process,
                         VMAddress extra_memory_address,
                         VMAddress simple_annotations_address,
                         VMAddress annotations_list_address) {
-#if defined(OS_ANDROID) || defined(OS_LINUX) || defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
   FakePtraceConnection connection;
   ASSERT_TRUE(connection.Initialize(process));
   ProcessMemoryLinux memory(&connection);
@@ -130,6 +133,7 @@ void ExpectCrashpadInfo(ProcessType process,
             kGatherIndirectlyReferencedMemory);
   EXPECT_EQ(reader.IndirectlyReferencedMemoryCap(),
             kIndirectlyReferencedMemoryCap);
+  EXPECT_EQ(reader.MaxStackCaptureSize(), kMaxStackCaptureSize);
   EXPECT_EQ(reader.ExtraMemoryRanges(), extra_memory_address);
   EXPECT_EQ(reader.SimpleAnnotations(), simple_annotations_address);
   EXPECT_EQ(reader.AnnotationsList(), annotations_list_address);
