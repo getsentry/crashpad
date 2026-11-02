@@ -142,30 +142,78 @@ bool SendToCrashHandlerServer(const std::wstring& pipe_name,
   }
 }
 
-bool SendPayloadToCrashHandlerServer(
-    const std::wstring& pipe_name,
-    const ClientToServerMessage& message,
-    base::span<const uint8_t> head,
-    base::span<const uint8_t> tail,
-    ServerToClientMessage* response) {
+namespace {
+
+// A handler that is suspended or hung never frees a pipe instance or answers.
+// Payloads are sent from the client's own threads, so each of their waits
+// gives up after this long.
+constexpr DWORD kPayloadTimeoutMs = 5000;
+
+// Finishes an overlapped ReadFile() or WriteFile() of |size| bytes on |pipe|
+// that returned |started|. If it is still pending after kPayloadTimeoutMs, it
+// is cancelled and the last error is ERROR_TIMEOUT.
+bool FinishOverlapped(HANDLE pipe,
+                      OVERLAPPED* overlapped,
+                      BOOL started,
+                      DWORD size) {
+  if (!started && GetLastError() != ERROR_IO_PENDING) {
+    return false;
+  }
+  DWORD transferred = 0;
+  if (WaitForSingleObject(overlapped->hEvent, kPayloadTimeoutMs) !=
+      WAIT_OBJECT_0) {
+    CancelIoEx(pipe, overlapped);
+    GetOverlappedResult(pipe, overlapped, &transferred, TRUE);
+    SetLastError(ERROR_TIMEOUT);
+    return false;
+  }
+  return GetOverlappedResult(pipe, overlapped, &transferred, FALSE) &&
+         transferred == size;
+}
+
+bool WriteOverlapped(HANDLE pipe,
+                     OVERLAPPED* overlapped,
+                     const void* data,
+                     size_t size) {
+  const DWORD length = base::checked_cast<DWORD>(size);
+  return FinishOverlapped(pipe,
+                          overlapped,
+                          ::WriteFile(pipe, data, length, nullptr, overlapped),
+                          length);
+}
+
+}  // namespace
+
+bool SendPayloadToCrashHandlerServer(const std::wstring& pipe_name,
+                                     const ClientToServerMessage& message,
+                                     base::span<const uint8_t> head,
+                                     base::span<const uint8_t> tail,
+                                     ServerToClientMessage* response,
+                                     bool wait_for_instance) {
+  ScopedKernelHANDLE event(CreateEvent(nullptr, true, false, nullptr));
+  if (!event.is_valid()) {
+    PLOG(ERROR) << "CreateEvent";
+    return false;
+  }
+
   // Retry CreateFile() in a loop (follows the logic in
   // SendToCrashHandlerServer).
   for (;;) {
-    ScopedFileHANDLE pipe(
-        CreateFile(pipe_name.c_str(),
-                   GENERIC_READ | GENERIC_WRITE,
-                   0,
-                   nullptr,
-                   OPEN_EXISTING,
-                   SECURITY_SQOS_PRESENT | SECURITY_IDENTIFICATION,
-                   nullptr));
+    ScopedFileHANDLE pipe(CreateFile(
+        pipe_name.c_str(),
+        GENERIC_READ | GENERIC_WRITE,
+        0,
+        nullptr,
+        OPEN_EXISTING,
+        SECURITY_SQOS_PRESENT | SECURITY_IDENTIFICATION | FILE_FLAG_OVERLAPPED,
+        nullptr));
     if (!pipe.is_valid()) {
-      if (GetLastError() != ERROR_PIPE_BUSY) {
+      if (GetLastError() != ERROR_PIPE_BUSY || !wait_for_instance) {
         PLOG(ERROR) << "CreateFile";
         return false;
       }
 
-      if (!WaitNamedPipe(pipe_name.c_str(), NMPWAIT_WAIT_FOREVER)) {
+      if (!WaitNamedPipe(pipe_name.c_str(), kPayloadTimeoutMs)) {
         PLOG(ERROR) << "WaitNamedPipe";
         return false;
       }
@@ -179,26 +227,32 @@ bool SendPayloadToCrashHandlerServer(
       return false;
     }
 
-    if (!WriteFile(pipe.get(), &message, sizeof(message))) {
+    OVERLAPPED overlapped = {};
+    overlapped.hEvent = event.get();
+
+    if (!WriteOverlapped(pipe.get(), &overlapped, &message, sizeof(message))) {
       PLOG(ERROR) << "WriteFile (header)";
       return false;
     }
 
     if (!head.empty() &&
-        !WriteFile(
-            pipe.get(), head.data(), base::checked_cast<DWORD>(head.size()))) {
+        !WriteOverlapped(pipe.get(), &overlapped, head.data(), head.size())) {
       PLOG(ERROR) << "WriteFile (payload head)";
       return false;
     }
 
     if (!tail.empty() &&
-        !WriteFile(
-            pipe.get(), tail.data(), base::checked_cast<DWORD>(tail.size()))) {
+        !WriteOverlapped(pipe.get(), &overlapped, tail.data(), tail.size())) {
       PLOG(ERROR) << "WriteFile (payload tail)";
       return false;
     }
 
-    if (!ReadFile(pipe.get(), response, sizeof(*response))) {
+    if (!FinishOverlapped(
+            pipe.get(),
+            &overlapped,
+            ::ReadFile(
+                pipe.get(), response, sizeof(*response), nullptr, &overlapped),
+            sizeof(*response))) {
       PLOG(ERROR) << "ReadFile (response)";
       return false;
     }

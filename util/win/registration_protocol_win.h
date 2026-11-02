@@ -41,21 +41,24 @@ bool SendToCrashHandlerServer(const std::wstring& pipe_name,
 //!     variable-length payload to the server.
 //!
 //! This is used for messages whose `ClientToServerMessage` header is followed
-//! by additional payload bytes.
+//! by additional payload bytes. Waiting for a pipe instance, each write, and
+//! the response each time out after 5 seconds.
 //!
 //! \param[in] pipe_name The name of the pipe to connect to.
 //! \param[in] message The message header to send.
 //! \param[in] head The first payload bytes to send after \a message.
 //! \param[in] tail Payload bytes to send after \a head.
 //! \param[out] response The server's response.
+//! \param[in] wait_for_instance If `false`, fail at once when no pipe instance
+//!     is free instead of waiting for one.
 //!
 //! \return `true` on success, `false` on failure with a message logged.
-bool SendPayloadToCrashHandlerServer(
-    const std::wstring& pipe_name,
-    const ClientToServerMessage& message,
-    base::span<const uint8_t> head,
-    base::span<const uint8_t> tail,
-    ServerToClientMessage* response);
+bool SendPayloadToCrashHandlerServer(const std::wstring& pipe_name,
+                                     const ClientToServerMessage& message,
+                                     base::span<const uint8_t> head,
+                                     base::span<const uint8_t> tail,
+                                     ServerToClientMessage* response,
+                                     bool wait_for_instance);
 
 //! \brief Wraps CreateNamedPipe() to create a single named pipe instance.
 //!

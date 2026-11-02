@@ -661,6 +661,22 @@ void CommonInProcessInitialization() {
   g_non_crash_dump_lock = new base::Lock();
 }
 
+// Set while the handler leaves attachment updates unanswered. Further updates
+// then fail at once when no pipe instance is free, instead of each waiting for
+// one that a stalled handler never frees.
+std::atomic<bool> g_attachment_update_failed{false};
+
+bool SendAttachmentUpdate(const std::wstring& ipc_pipe,
+                          const ClientToServerMessage& message,
+                          base::span<const uint8_t> head,
+                          base::span<const uint8_t> tail,
+                          ServerToClientMessage* response) {
+  const bool sent = SendPayloadToCrashHandlerServer(
+      ipc_pipe, message, head, tail, response, !g_attachment_update_failed);
+  g_attachment_update_failed = !sent;
+  return sent;
+}
+
 }  // namespace
 
 CrashpadClient::CrashpadClient()
@@ -1229,13 +1245,13 @@ void CrashpadClient::AddAttachment(const base::FilePath& attachment) {
       static_cast<uint32_t>(path_length_bytes);
 
   ServerToClientMessage response = {};
-  SendPayloadToCrashHandlerServer(ipc_pipe_,
-                                  message,
-                                  base::as_bytes(base::make_span(
-                                      attachment.value().c_str(),
-                                      path_length_bytes / sizeof(wchar_t))),
-                                  {},
-                                  &response);
+  SendAttachmentUpdate(
+      ipc_pipe_,
+      message,
+      base::as_bytes(base::make_span(attachment.value().c_str(),
+                                     path_length_bytes / sizeof(wchar_t))),
+      {},
+      &response);
 }
 
 bool CrashpadClient::WriteAttachment(const base::FilePath& attachment,
@@ -1257,14 +1273,13 @@ bool CrashpadClient::WriteAttachment(const base::FilePath& attachment,
       static_cast<uint32_t>(data.size());
 
   ServerToClientMessage response = {};
-  return SendPayloadToCrashHandlerServer(ipc_pipe_,
-                                         message,
-                                         base::as_bytes(base::make_span(
-                                             attachment.value().c_str(),
-                                             path_length_bytes
-                                                 / sizeof(wchar_t))),
-                                         data,
-                                         &response);
+  return SendAttachmentUpdate(
+      ipc_pipe_,
+      message,
+      base::as_bytes(base::make_span(attachment.value().c_str(),
+                                     path_length_bytes / sizeof(wchar_t))),
+      data,
+      &response);
 }
 
 bool CrashpadClient::AppendAttachment(const base::FilePath& attachment,
@@ -1286,14 +1301,13 @@ bool CrashpadClient::AppendAttachment(const base::FilePath& attachment,
       static_cast<uint32_t>(data.size());
 
   ServerToClientMessage response = {};
-  return SendPayloadToCrashHandlerServer(ipc_pipe_,
-                                         message,
-                                         base::as_bytes(base::make_span(
-                                             attachment.value().c_str(),
-                                             path_length_bytes
-                                                 / sizeof(wchar_t))),
-                                         data,
-                                         &response);
+  return SendAttachmentUpdate(
+      ipc_pipe_,
+      message,
+      base::as_bytes(base::make_span(attachment.value().c_str(),
+                                     path_length_bytes / sizeof(wchar_t))),
+      data,
+      &response);
 }
 
 void CrashpadClient::RemoveAttachment(const base::FilePath& attachment) {
@@ -1310,13 +1324,13 @@ void CrashpadClient::RemoveAttachment(const base::FilePath& attachment) {
       static_cast<uint32_t>(path_length_bytes);
 
   ServerToClientMessage response = {};
-  SendPayloadToCrashHandlerServer(ipc_pipe_,
-                                  message,
-                                  base::as_bytes(base::make_span(
-                                      attachment.value().c_str(),
-                                      path_length_bytes / sizeof(wchar_t))),
-                                  {},
-                                  &response);
+  SendAttachmentUpdate(
+      ipc_pipe_,
+      message,
+      base::as_bytes(base::make_span(attachment.value().c_str(),
+                                     path_length_bytes / sizeof(wchar_t))),
+      {},
+      &response);
 }
 
 void CrashpadClient::RequestRetry() {
