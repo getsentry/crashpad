@@ -1275,7 +1275,8 @@ bool CrashpadClient::WriteAttachment(const base::FilePath& attachment,
                               message,
                               base::as_bytes(base::make_span(
                                   attachment.value().c_str(),
-                                  path_length_bytes / sizeof(wchar_t))),
+                                  path_length_bytes
+                                      / sizeof(wchar_t))),
                               data,
                               &response);
 }
@@ -1304,7 +1305,8 @@ bool CrashpadClient::AppendAttachment(const base::FilePath& attachment,
                               message,
                               base::as_bytes(base::make_span(
                                   attachment.value().c_str(),
-                                  path_length_bytes / sizeof(wchar_t))),
+                                  path_length_bytes
+                                      / sizeof(wchar_t))),
                               data,
                               &response);
 }
