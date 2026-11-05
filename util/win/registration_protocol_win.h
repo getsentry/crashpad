@@ -53,12 +53,13 @@ bool SendToCrashHandlerServer(const std::wstring& pipe_name,
 //!     is free instead of waiting for one.
 //!
 //! \return `true` on success, `false` on failure with a message logged.
-bool SendPayloadToCrashHandlerServer(const std::wstring& pipe_name,
-                                     const ClientToServerMessage& message,
-                                     base::span<const uint8_t> head,
-                                     base::span<const uint8_t> tail,
-                                     ServerToClientMessage* response,
-                                     bool wait_for_instance);
+bool SendPayloadToCrashHandlerServer(
+    const std::wstring& pipe_name,
+    const ClientToServerMessage& message,
+    base::span<const uint8_t> head,
+    base::span<const uint8_t> tail,
+    ServerToClientMessage* response,
+    bool wait_for_instance);
 
 //! \brief Wraps CreateNamedPipe() to create a single named pipe instance.
 //!

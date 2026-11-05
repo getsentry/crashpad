@@ -184,12 +184,13 @@ bool WriteOverlapped(HANDLE pipe,
 
 }  // namespace
 
-bool SendPayloadToCrashHandlerServer(const std::wstring& pipe_name,
-                                     const ClientToServerMessage& message,
-                                     base::span<const uint8_t> head,
-                                     base::span<const uint8_t> tail,
-                                     ServerToClientMessage* response,
-                                     bool wait_for_instance) {
+bool SendPayloadToCrashHandlerServer(
+    const std::wstring& pipe_name,
+    const ClientToServerMessage& message,
+    base::span<const uint8_t> head,
+    base::span<const uint8_t> tail,
+    ServerToClientMessage* response,
+    bool wait_for_instance) {
   ScopedKernelHANDLE event(CreateEvent(nullptr, true, false, nullptr));
   if (!event.is_valid()) {
     PLOG(ERROR) << "CreateEvent";
@@ -199,14 +200,15 @@ bool SendPayloadToCrashHandlerServer(const std::wstring& pipe_name,
   // Retry CreateFile() in a loop (follows the logic in
   // SendToCrashHandlerServer).
   for (;;) {
-    ScopedFileHANDLE pipe(CreateFile(
-        pipe_name.c_str(),
-        GENERIC_READ | GENERIC_WRITE,
-        0,
-        nullptr,
-        OPEN_EXISTING,
-        SECURITY_SQOS_PRESENT | SECURITY_IDENTIFICATION | FILE_FLAG_OVERLAPPED,
-        nullptr));
+    ScopedFileHANDLE pipe(
+        CreateFile(pipe_name.c_str(),
+                   GENERIC_READ | GENERIC_WRITE,
+                   0,
+                   nullptr,
+                   OPEN_EXISTING,
+                   SECURITY_SQOS_PRESENT | SECURITY_IDENTIFICATION |
+                       FILE_FLAG_OVERLAPPED,
+                   nullptr));
     if (!pipe.is_valid()) {
       if (GetLastError() != ERROR_PIPE_BUSY || !wait_for_instance) {
         PLOG(ERROR) << "CreateFile";

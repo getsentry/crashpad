@@ -1245,13 +1245,13 @@ void CrashpadClient::AddAttachment(const base::FilePath& attachment) {
       static_cast<uint32_t>(path_length_bytes);
 
   ServerToClientMessage response = {};
-  SendAttachmentUpdate(
-      ipc_pipe_,
-      message,
-      base::as_bytes(base::make_span(attachment.value().c_str(),
-                                     path_length_bytes / sizeof(wchar_t))),
-      {},
-      &response);
+  SendAttachmentUpdate(ipc_pipe_,
+                       message,
+                       base::as_bytes(base::make_span(
+                           attachment.value().c_str(),
+                           path_length_bytes / sizeof(wchar_t))),
+                       {},
+                       &response);
 }
 
 bool CrashpadClient::WriteAttachment(const base::FilePath& attachment,
@@ -1273,13 +1273,13 @@ bool CrashpadClient::WriteAttachment(const base::FilePath& attachment,
       static_cast<uint32_t>(data.size());
 
   ServerToClientMessage response = {};
-  return SendAttachmentUpdate(
-      ipc_pipe_,
-      message,
-      base::as_bytes(base::make_span(attachment.value().c_str(),
-                                     path_length_bytes / sizeof(wchar_t))),
-      data,
-      &response);
+  return SendAttachmentUpdate(ipc_pipe_,
+                              message,
+                              base::as_bytes(base::make_span(
+                                  attachment.value().c_str(),
+                                  path_length_bytes / sizeof(wchar_t))),
+                              data,
+                              &response);
 }
 
 bool CrashpadClient::AppendAttachment(const base::FilePath& attachment,
@@ -1301,13 +1301,13 @@ bool CrashpadClient::AppendAttachment(const base::FilePath& attachment,
       static_cast<uint32_t>(data.size());
 
   ServerToClientMessage response = {};
-  return SendAttachmentUpdate(
-      ipc_pipe_,
-      message,
-      base::as_bytes(base::make_span(attachment.value().c_str(),
-                                     path_length_bytes / sizeof(wchar_t))),
-      data,
-      &response);
+  return SendAttachmentUpdate(ipc_pipe_,
+                              message,
+                              base::as_bytes(base::make_span(
+                                  attachment.value().c_str(),
+                                  path_length_bytes / sizeof(wchar_t))),
+                              data,
+                              &response);
 }
 
 void CrashpadClient::RemoveAttachment(const base::FilePath& attachment) {
@@ -1324,13 +1324,13 @@ void CrashpadClient::RemoveAttachment(const base::FilePath& attachment) {
       static_cast<uint32_t>(path_length_bytes);
 
   ServerToClientMessage response = {};
-  SendAttachmentUpdate(
-      ipc_pipe_,
-      message,
-      base::as_bytes(base::make_span(attachment.value().c_str(),
-                                     path_length_bytes / sizeof(wchar_t))),
-      {},
-      &response);
+  SendAttachmentUpdate(ipc_pipe_,
+                       message,
+                       base::as_bytes(base::make_span(
+                           attachment.value().c_str(),
+                           path_length_bytes / sizeof(wchar_t))),
+                       {},
+                       &response);
 }
 
 void CrashpadClient::RequestRetry() {
