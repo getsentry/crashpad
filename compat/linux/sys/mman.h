@@ -1,4 +1,4 @@
-// Copyright 2019 The Crashpad Authors. All rights reserved.
+// Copyright 2019 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -24,6 +24,10 @@
 // code using a sysroot which has glibc 2.27, but then run it on Ubuntu 16.04,
 // which doesn't.
 #if defined(__GLIBC__)
+
+#ifndef __THROW
+#define __THROW
+#endif
 
 #ifdef __cplusplus
 extern "C" {

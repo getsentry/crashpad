@@ -1,4 +1,4 @@
-// Copyright 2015 The Crashpad Authors. All rights reserved.
+// Copyright 2015 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,10 +19,13 @@
 
 #include <map>
 #include <string>
+#include <vector>
 
 #include "client/crash_report_database.h"
 #include "handler/crash_report_upload_thread.h"
+#include "handler/mac/exception_handler_server.h"
 #include "handler/user_stream_data_source.h"
+#include "util/misc/uuid.h"
 #include "util/mach/exc_server_variants.h"
 
 namespace crashpad {
@@ -30,7 +33,7 @@ namespace crashpad {
 //! \brief An exception handler that writes crash reports for exception messages
 //!     to a CrashReportDatabase.
 class CrashReportExceptionHandler final
-    : public UniversalMachExcServer::Interface {
+    : public ExceptionHandlerServer::Delegate {
  public:
   //! \brief Creates a new object that will store crash reports in \a database.
   //!
@@ -48,15 +51,24 @@ class CrashReportExceptionHandler final
   //!     To interoperate with Breakpad servers, the recommended practice is to
   //!     specify values for the `"prod"` and `"ver"` keys as process
   //!     annotations.
+  //! \param[in] attachments A vector of file paths that should be captured with
+  //!     each report at the time of the crash.
   //! \param[in] user_stream_data_sources Data sources to be used to extend
   //!     crash reports. For each crash report that is written, the data sources
   //!     are called in turn. These data sources may contribute additional
   //!     minidump streams. `nullptr` if not required.
+  //! \param[in] wait_for_upload If `true`, upload crash reports synchronously
+  //!     before returning from the exception handler.
   CrashReportExceptionHandler(
       CrashReportDatabase* database,
       CrashReportUploadThread* upload_thread,
       const std::map<std::string, std::string>* process_annotations,
-      const UserStreamDataSources* user_stream_data_sources);
+      const std::vector<base::FilePath>* attachments,
+      const UserStreamDataSources* user_stream_data_sources,
+      bool wait_for_upload,
+      const base::FilePath* crash_reporter,
+      const base::FilePath* crash_envelope,
+      const UUID* report_id);
 
   CrashReportExceptionHandler(const CrashReportExceptionHandler&) = delete;
   CrashReportExceptionHandler& operator=(const CrashReportExceptionHandler&) =
@@ -84,11 +96,21 @@ class CrashReportExceptionHandler final
       const mach_msg_trailer_t* trailer,
       bool* destroy_complex_request) override;
 
+  // ExceptionHandlerServer::Delegate:
+  void RequestRetry() override;
+  void AddAttachment(const base::FilePath& attachment) override;
+  void RemoveAttachment(const base::FilePath& attachment) override;
+
  private:
   CrashReportDatabase* database_;  // weak
   CrashReportUploadThread* upload_thread_;  // weak
   const std::map<std::string, std::string>* process_annotations_;  // weak
+  std::vector<base::FilePath> attachments_;
   const UserStreamDataSources* user_stream_data_sources_;  // weak
+  bool wait_for_upload_;
+  const base::FilePath* crash_reporter_;  // weak
+  const base::FilePath* crash_envelope_;  // weak
+  const UUID* report_id_;  // weak
 };
 
 }  // namespace crashpad

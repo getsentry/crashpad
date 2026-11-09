@@ -1,4 +1,4 @@
-; Copyright 2015 The Crashpad Authors. All rights reserved.
+; Copyright 2015 The Crashpad Authors
 ;
 ; Licensed under the Apache License, Version 2.0 (the "License");
 ; you may not use this file except in compliance with the License.
@@ -210,7 +210,10 @@ endif
 ; namespace crashpad {
 ; void CaptureContext(CONTEXT* context);
 ; }  // namespace crashpad
-ifdef _M_IX86
+
+ifdef __MINGW32__
+CAPTURECONTEXT_SYMBOL equ _ZN8crashpad14CaptureContextEP8_CONTEXT
+elseifdef _M_IX86
 CAPTURECONTEXT_SYMBOL equ ?CaptureContext@crashpad@@YAXPAU_CONTEXT@@@Z
 elseifdef _M_X64
 CAPTURECONTEXT_SYMBOL equ ?CaptureContext@crashpad@@YAXPEAU_CONTEXT@@@Z

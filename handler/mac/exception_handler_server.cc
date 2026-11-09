@@ -1,4 +1,4 @@
-// Copyright 2014 The Crashpad Authors. All rights reserved.
+// Copyright 2014 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,11 +14,16 @@
 
 #include "handler/mac/exception_handler_server.h"
 
+#include <mach/mig_errors.h>
+
+#include <set>
 #include <utility>
 
+#include "base/apple/mach_logging.h"
+#include "base/check.h"
 #include "base/logging.h"
-#include "base/mac/mach_logging.h"
 #include "util/mach/composite_mach_message_server.h"
+#include "util/mach/exception_handler_protocol.h"
 #include "util/mach/mach_extensions.h"
 #include "util/mach/mach_message.h"
 #include "util/mach/mach_message_server.h"
@@ -28,26 +33,107 @@ namespace crashpad {
 
 namespace {
 
+// Dispatches ClientToServerMessage Mach messages to the delegate by message
+// type.
+class ClientToServerMessageServer : public MachMessageServer::Interface {
+ public:
+  ClientToServerMessageServer(ExceptionHandlerServer::Delegate* delegate,
+                              pid_t owner_process_id)
+      : delegate_(delegate), owner_process_id_(owner_process_id) {}
+
+  ClientToServerMessageServer(const ClientToServerMessageServer&) = delete;
+  ClientToServerMessageServer& operator=(const ClientToServerMessageServer&) =
+      delete;
+
+  bool MachMessageServerFunction(const mach_msg_header_t* in_header,
+                                 mach_msg_header_t* out_header,
+                                 bool* destroy_complex_request) override {
+    const ClientToServerMessage* message =
+        ReceiveClientToServerMessage(in_header, out_header);
+    if (!message) {
+      return false;
+    }
+    *destroy_complex_request = true;
+    if (!RuntimeMessageOriginIsOwner(in_header)) {
+      return true;
+    }
+
+    switch (message->type) {
+      case ClientToServerMessage::kRequestRetry:
+        delegate_->RequestRetry();
+        break;
+      case ClientToServerMessage::kAddAttachment:
+        delegate_->AddAttachment(base::FilePath(message->Payload()));
+        break;
+      case ClientToServerMessage::kRemoveAttachment:
+        delegate_->RemoveAttachment(base::FilePath(message->Payload()));
+        break;
+    }
+    return true;
+  }
+
+  std::set<mach_msg_id_t> MachMessageServerRequestIDs() override {
+    return {kClientToServerMessageID};
+  }
+
+  mach_msg_size_t MachMessageServerRequestSize() override {
+    return sizeof(ClientToServerMessage);
+  }
+
+  mach_msg_size_t MachMessageServerReplySize() override {
+    return sizeof(mig_reply_error_t);
+  }
+
+ private:
+  bool RuntimeMessageOriginIsOwner(const mach_msg_header_t* in_header) const {
+    if (owner_process_id_ <= 0) {
+      // No owner is configured for launchd Mach service handlers.
+      return true;
+    }
+
+    pid_t sender_process_id =
+        AuditPIDFromMachMessageTrailer(MachMessageTrailerFromHeader(in_header));
+    if (sender_process_id <= 0) {
+      LOG(WARNING) << "rejecting runtime control message without sender pid";
+      return false;
+    }
+
+    if (sender_process_id != owner_process_id_) {
+      LOG(WARNING) << "rejecting runtime control message from non-owner pid "
+                   << sender_process_id;
+      return false;
+    }
+
+    return true;
+  }
+
+  ExceptionHandlerServer::Delegate* delegate_;  // weak
+  pid_t owner_process_id_;
+};
+
 class ExceptionHandlerServerRun : public UniversalMachExcServer::Interface,
                                   public NotifyServer::DefaultInterface {
  public:
-  ExceptionHandlerServerRun(
-      mach_port_t exception_port,
-      mach_port_t notify_port,
-      bool launchd,
-      UniversalMachExcServer::Interface* exception_interface)
+  ExceptionHandlerServerRun(mach_port_t exception_port,
+                            mach_port_t notify_port,
+                            bool launchd,
+                            ExceptionHandlerServer::Delegate* delegate,
+                            pid_t owner_process_id)
       : UniversalMachExcServer::Interface(),
         NotifyServer::DefaultInterface(),
         mach_exc_server_(this),
         notify_server_(this),
+        client_to_server_message_server_(delegate, owner_process_id),
         composite_mach_message_server_(),
-        exception_interface_(exception_interface),
+        delegate_(delegate),
         exception_port_(exception_port),
         notify_port_(notify_port),
         running_(true),
         launchd_(launchd) {
     composite_mach_message_server_.AddHandler(&mach_exc_server_);
     composite_mach_message_server_.AddHandler(&notify_server_);
+    composite_mach_message_server_.AddHandler(
+        &client_to_server_message_server_);
   }
 
   ExceptionHandlerServerRun(const ExceptionHandlerServerRun&) = delete;
@@ -73,7 +159,7 @@ class ExceptionHandlerServerRun : public UniversalMachExcServer::Interface,
                                           MACH_MSG_TYPE_MAKE_SEND_ONCE,
                                           &previous);
       MACH_CHECK(kr == KERN_SUCCESS, kr) << "mach_port_request_notification";
-      base::mac::ScopedMachSendRight previous_owner(previous);
+      base::apple::ScopedMachSendRight previous_owner(previous);
     }
 
     // A single CompositeMachMessageServer will dispatch both exception messages
@@ -84,7 +170,7 @@ class ExceptionHandlerServerRun : public UniversalMachExcServer::Interface,
     // from ever existing. Using distinct receive rights also allows the handler
     // methods to ensure that the messages they process were sent by a holder of
     // the proper send right.
-    base::mac::ScopedMachPortSet server_port_set(
+    base::apple::ScopedMachPortSet server_port_set(
         NewMachPort(MACH_PORT_RIGHT_PORT_SET));
     CHECK(server_port_set.is_valid());
 
@@ -141,20 +227,20 @@ class ExceptionHandlerServerRun : public UniversalMachExcServer::Interface,
       return KERN_FAILURE;
     }
 
-    return exception_interface_->CatchMachException(behavior,
-                                                    exception_port,
-                                                    thread,
-                                                    task,
-                                                    exception,
-                                                    code,
-                                                    code_count,
-                                                    flavor,
-                                                    old_state,
-                                                    old_state_count,
-                                                    new_state,
-                                                    new_state_count,
-                                                    trailer,
-                                                    destroy_complex_request);
+    return delegate_->CatchMachException(behavior,
+                                         exception_port,
+                                         thread,
+                                         task,
+                                         exception,
+                                         code,
+                                         code_count,
+                                         flavor,
+                                         old_state,
+                                         old_state_count,
+                                         new_state,
+                                         new_state_count,
+                                         trailer,
+                                         destroy_complex_request);
   }
 
   // NotifyServer::DefaultInterface:
@@ -181,8 +267,9 @@ class ExceptionHandlerServerRun : public UniversalMachExcServer::Interface,
  private:
   UniversalMachExcServer mach_exc_server_;
   NotifyServer notify_server_;
+  ClientToServerMessageServer client_to_server_message_server_;
   CompositeMachMessageServer composite_mach_message_server_;
-  UniversalMachExcServer::Interface* exception_interface_;  // weak
+  ExceptionHandlerServer::Delegate* delegate_;  // weak
   mach_port_t exception_port_;  // weak
   mach_port_t notify_port_;  // weak
   bool running_;
@@ -192,10 +279,12 @@ class ExceptionHandlerServerRun : public UniversalMachExcServer::Interface,
 }  // namespace
 
 ExceptionHandlerServer::ExceptionHandlerServer(
-    base::mac::ScopedMachReceiveRight receive_port,
-    bool launchd)
+    base::apple::ScopedMachReceiveRight receive_port,
+    bool launchd,
+    pid_t owner_process_id)
     : receive_port_(std::move(receive_port)),
       notify_port_(NewMachPort(MACH_PORT_RIGHT_RECEIVE)),
+      owner_process_id_(owner_process_id),
       launchd_(launchd) {
   CHECK(receive_port_.is_valid());
   CHECK(notify_port_.is_valid());
@@ -204,10 +293,12 @@ ExceptionHandlerServer::ExceptionHandlerServer(
 ExceptionHandlerServer::~ExceptionHandlerServer() {
 }
 
-void ExceptionHandlerServer::Run(
-    UniversalMachExcServer::Interface* exception_interface) {
-  ExceptionHandlerServerRun run(
-      receive_port_.get(), notify_port_.get(), launchd_, exception_interface);
+void ExceptionHandlerServer::Run(Delegate* delegate) {
+  ExceptionHandlerServerRun run(receive_port_.get(),
+                                notify_port_.get(),
+                                launchd_,
+                                delegate,
+                                owner_process_id_);
   run.Run();
 }
 

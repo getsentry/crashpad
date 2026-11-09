@@ -1,4 +1,4 @@
-// Copyright 2015 The Crashpad Authors. All rights reserved.
+// Copyright 2015 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -57,6 +57,34 @@ class ExceptionHandlerServer {
         HANDLE process,
         WinVMAddress exception_information_address,
         WinVMAddress debug_critical_section_address) = 0;
+
+    //! \brief Called when the server has received a request to add an
+    //! attachment.
+    //!
+    //! \param[in] attachment The path of the attachment.
+    virtual void ExceptionHandlerServerAttachmentAdded(
+        const base::FilePath& attachment) = 0;
+
+    //! \brief Called when the server has received a request to write an
+    //! attachment's contents.
+    virtual void ExceptionHandlerServerAttachmentWritten(
+        const base::FilePath& attachment, const std::string& data) = 0;
+
+    //! \brief Called when the server has received a request to append to an
+    //! attachment's contents.
+    virtual void ExceptionHandlerServerAttachmentAppended(
+        const base::FilePath& attachment, const std::string& data) = 0;
+
+    //! \brief Called when the server has received a request to remove an
+    //! attachment.
+    //!
+    //! \param[in] attachment The path of the attachment.
+    virtual void ExceptionHandlerServerAttachmentRemoved(
+        const base::FilePath& attachment) = 0;
+
+    //! \brief Called when the server has received a request to retry pending
+    //!     report uploads.
+    virtual void ExceptionHandlerServerRetryRequested() = 0;
 
    protected:
     ~Delegate();
@@ -128,6 +156,7 @@ class ExceptionHandlerServer {
   std::wstring pipe_name_;
   ScopedKernelHANDLE port_;
   ScopedFileHandle first_pipe_instance_;
+  DWORD owner_process_id_;
 
   base::Lock clients_lock_;
   std::set<internal::ClientData*> clients_;

@@ -1,4 +1,4 @@
-// Copyright 2017 The Crashpad Authors. All rights reserved.
+// Copyright 2017 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,7 +17,9 @@
 
 #include_next <sys/ptrace.h>
 
+#ifdef __GLIBC__
 #include <sys/cdefs.h>
+#endif
 
 // https://sourceware.org/bugzilla/show_bug.cgi?id=22433
 #if !defined(PTRACE_GET_THREAD_AREA) && !defined(PT_GET_THREAD_AREA) && \

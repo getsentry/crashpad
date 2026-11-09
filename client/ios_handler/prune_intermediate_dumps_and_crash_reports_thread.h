@@ -1,4 +1,4 @@
-// Copyright 2021 The Crashpad Authors. All rights reserved.
+// Copyright 2021 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -31,8 +31,8 @@ class PruneCondition;
 //!     dumps.
 //!
 //! After the thread is started, the database is pruned using the condition
-//! every 24 hours. Upon calling Start(), the thread waits 5 seconds before
-//! performing the initial prune operation.
+//! every 24 hours. Upon calling Start(), the thread waits before performing
+//! the initial prune operation.
 //!
 //! Locked intermediate dump files are unlocked only once, not periodically.
 //! Locked dumps that match this bundle id can be unlocked if they are over a
@@ -48,8 +48,11 @@ class PruneIntermediateDumpsAndCrashReportsThread
   //!     pruning.
   //! \param[in] pending_path The path to any locked intermediate dump files.
   //! \param[in] bundle_identifier_and_seperator The identifier for this client,
-  //!  used to determine when locked files are considered stale, with a
-  //!  seperator at the end to allow for substring searches.
+  //!     used to determine when locked files are considered stale, with a
+  //!     seperator at the end to allow for substring searches.
+  //! \param[in] is_extension Whether the process is an app extension. If
+  //!     `true`, the inital prune will occur after a 5-second delay. If
+  //!     `false`, the initial prune will occur after a 60-second delay.
   PruneIntermediateDumpsAndCrashReportsThread(
       CrashReportDatabase* database,
       std::unique_ptr<PruneCondition> condition,
@@ -84,6 +87,9 @@ class PruneIntermediateDumpsAndCrashReportsThread
   //! It is expected to only be called from the same thread that called Start().
   void Stop() override;
 
+  //! \return `true` if the thread is running, `false` if it is not.
+  bool is_running() const { return thread_.is_running(); }
+
  private:
   // WorkerThread::Delegate:
   void DoWork(const WorkerThread* thread) override;
@@ -94,6 +100,7 @@ class PruneIntermediateDumpsAndCrashReportsThread
   std::string bundle_identifier_and_seperator_;
   bool clean_old_intermediate_dumps_;
   double initial_work_delay_;
+  time_t last_start_time_;
   CrashReportDatabase* database_;  // weak
 };
 

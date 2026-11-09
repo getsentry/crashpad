@@ -1,4 +1,4 @@
-// Copyright 2015 The Crashpad Authors. All rights reserved.
+// Copyright 2015 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,18 +14,27 @@
 
 #include "snapshot/win/process_reader_win.h"
 
+#ifdef CLIENT_STACKTRACES_ENABLED
+#include <dbghelp.h>
+#endif
 #include <string.h>
 #include <winternl.h>
 
 #include <memory>
 
+#include "base/check_op.h"
+#include "base/notreached.h"
 #include "base/numerics/safe_conversions.h"
+#include "base/strings/utf_string_conversions.h"
+#include "snapshot/win/cpu_context_win.h"
 #include "util/misc/capture_context.h"
 #include "util/misc/time.h"
+#include "util/win/get_function.h"
 #include "util/win/nt_internals.h"
 #include "util/win/ntstatus_logging.h"
 #include "util/win/process_structs.h"
 #include "util/win/scoped_handle.h"
+#include "util/win/scoped_local_alloc.h"
 
 namespace crashpad {
 
@@ -125,30 +134,119 @@ HANDLE OpenThread(
   return handle;
 }
 
+#ifdef CLIENT_STACKTRACES_ENABLED
+void DoStackWalk(ProcessReaderWin::Thread* thread,
+                 HANDLE process,
+                 HANDLE thread_handle,
+                 bool is_64_reading_32) {
+  if (is_64_reading_32) {
+    // TODO: we dont support it right away, maybe in the future
+    return;
+  }
+
+  STACKFRAME64 stack_frame;
+  memset(&stack_frame, 0, sizeof(stack_frame));
+
+  stack_frame.AddrPC.Mode = AddrModeFlat;
+  stack_frame.AddrFrame.Mode = AddrModeFlat;
+  stack_frame.AddrStack.Mode = AddrModeFlat;
+
+  int machine_type = IMAGE_FILE_MACHINE_I386;
+  CONTEXT ctx;
+#if defined(ARCH_CPU_X86)
+  ctx = *thread->context.context<CONTEXT>();
+  stack_frame.AddrPC.Offset = ctx.Eip;
+  stack_frame.AddrFrame.Offset = ctx.Ebp;
+  stack_frame.AddrStack.Offset = ctx.Esp;
+#elif defined(ARCH_CPU_X86_64)
+  // if (!is_64_reading_32) {
+  machine_type = IMAGE_FILE_MACHINE_AMD64;
+
+  ctx = *thread->context.context<CONTEXT>();
+  stack_frame.AddrPC.Offset = ctx.Rip;
+  stack_frame.AddrFrame.Offset = ctx.Rbp;
+  stack_frame.AddrStack.Offset = ctx.Rsp;
+  // } else {
+  //   const WOW64_CONTEXT* ctx_ = &thread->context.wow64;
+  //   stack_frame.AddrPC.Offset = ctx_->Eip;
+  //   stack_frame.AddrFrame.Offset = ctx_->Ebp;
+  //   stack_frame.AddrStack.Offset = ctx_->Esp;
+  //   ctx = (LPVOID)ctx_;
+  // }
+
+#elif defined(ARCH_CPU_ARM64)
+  machine_type = IMAGE_FILE_MACHINE_ARM64;
+  ctx = *thread->context.context<CONTEXT>();
+  stack_frame.AddrPC.Offset = ctx.Pc;
+  stack_frame.AddrFrame.Offset = ctx.Fp;
+  stack_frame.AddrStack.Offset = ctx.Sp;
+#else
+#error Unsupported Windows Arch
+#endif  // ARCH_CPU_X86
+
+  char buffer[sizeof(SYMBOL_INFO) + MAX_SYM_NAME];
+  PSYMBOL_INFO pSymbol = (PSYMBOL_INFO)buffer;
+
+  pSymbol->SizeOfStruct = sizeof(SYMBOL_INFO);
+  pSymbol->MaxNameLen = MAX_SYM_NAME;
+
+  while (StackWalk64(machine_type,
+                     process,
+                     thread_handle,
+                     &stack_frame,
+                     &ctx,
+                     NULL,
+                     SymFunctionTableAccess64,
+                     SymGetModuleBase64,
+                     NULL)) {
+    uint64_t addr = stack_frame.AddrPC.Offset;
+    std::string sym("");
+    if (SymFromAddr(process, addr, 0, pSymbol)) {
+      sym = std::string(pSymbol->Name);
+    }
+    FrameSnapshot frame(addr, sym);
+    thread->frames.push_back(frame);
+  }
+}
+#endif
+
 // It's necessary to suspend the thread to grab CONTEXT. SuspendThread has a
 // side-effect of returning the SuspendCount of the thread on success, so we
 // fill out these two pieces of semi-unrelated data in the same function.
 template <class Traits>
-bool FillThreadContextAndSuspendCount(HANDLE thread_handle,
+bool FillThreadContextAndSuspendCount(HANDLE process,
+                                      HANDLE thread_handle,
                                       ProcessReaderWin::Thread* thread,
                                       ProcessSuspensionState suspension_state,
                                       bool is_64_reading_32) {
+#ifndef CLIENT_STACKTRACES_ENABLED
+  (void)process;
+#endif
+
   // Don't suspend the thread if it's this thread. This is really only for test
   // binaries, as we won't be walking ourselves, in general.
-  bool is_current_thread = thread->id ==
-                           reinterpret_cast<process_types::TEB<Traits>*>(
-                               NtCurrentTeb())->ClientId.UniqueThread;
+  bool is_current_thread =
+      thread->id ==
+      reinterpret_cast<process_types::TEB<Traits>*>(NtCurrentTeb())
+          ->ClientId.UniqueThread;
+  bool did_suspend_thread = true;
 
   if (is_current_thread) {
     DCHECK(suspension_state == ProcessSuspensionState::kRunning);
     thread->suspend_count = 0;
     DCHECK(!is_64_reading_32);
-    CaptureContext(&thread->context.native);
+    thread->context.InitializeFromCurrentThread();
+
+#ifdef CLIENT_STACKTRACES_ENABLED
+    DoStackWalk(thread, process, thread_handle, is_64_reading_32);
+#endif
   } else {
     DWORD previous_suspend_count = SuspendThread(thread_handle);
     if (previous_suspend_count == static_cast<DWORD>(-1)) {
       PLOG(ERROR) << "SuspendThread";
-      return false;
+      // Must assume thread was already suspended, so we can still try to read
+      did_suspend_thread = false;
+      previous_suspend_count = 1;
     }
     if (previous_suspend_count <= 0 &&
         suspension_state == ProcessSuspensionState::kSuspended) {
@@ -162,28 +260,31 @@ bool FillThreadContextAndSuspendCount(HANDLE thread_handle,
           (suspension_state == ProcessSuspensionState::kSuspended ? 1 : 0);
     }
 
-    memset(&thread->context, 0, sizeof(thread->context));
 #if defined(ARCH_CPU_32_BITS)
-    const bool is_native = true;
-#elif defined(ARCH_CPU_64_BITS)
-    const bool is_native = !is_64_reading_32;
-    if (is_64_reading_32) {
-      thread->context.wow64.ContextFlags = CONTEXT_ALL;
-      if (!Wow64GetThreadContext(thread_handle, &thread->context.wow64)) {
-        PLOG(ERROR) << "Wow64GetThreadContext";
-        return false;
-      }
-    }
-#endif
-    if (is_native) {
-      thread->context.native.ContextFlags = CONTEXT_ALL;
-      if (!GetThreadContext(thread_handle, &thread->context.native)) {
-        PLOG(ERROR) << "GetThreadContext";
-        return false;
-      }
-    }
+    if (!thread->context.InitializeNative(thread_handle))
+      return false;
+#endif  // ARCH_CPU_32_BITS
 
-    if (!ResumeThread(thread_handle)) {
+#if defined(ARCH_CPU_64_BITS)
+    if (is_64_reading_32) {
+      if (!thread->context.InitializeWow64(thread_handle))
+        return false;
+#if defined(ARCH_CPU_X86_64)
+    } else if (IsXStateFeatureEnabled(XSTATE_MASK_CET_U)) {
+      if (!thread->context.InitializeXState(thread_handle, XSTATE_MASK_CET_U))
+        return false;
+#endif  // ARCH_CPU_X86_64
+    } else {
+      if (!thread->context.InitializeNative(thread_handle))
+        return false;
+    }
+#endif  // ARCH_CPU_64_BITS
+
+#ifdef CLIENT_STACKTRACES_ENABLED
+    DoStackWalk(thread, process, thread_handle, is_64_reading_32);
+#endif
+
+    if (did_suspend_thread && !ResumeThread(thread_handle)) {
       PLOG(ERROR) << "ResumeThread";
       return false;
     }
@@ -194,8 +295,85 @@ bool FillThreadContextAndSuspendCount(HANDLE thread_handle,
 
 }  // namespace
 
+ProcessReaderWin::ThreadContext::ThreadContext()
+    : offset_(0), initialized_(false), data_() {}
+
+void ProcessReaderWin::ThreadContext::InitializeFromCurrentThread() {
+  data_.resize(sizeof(CONTEXT));
+  initialized_ = true;
+  CaptureContext(context<CONTEXT>());
+}
+
+bool ProcessReaderWin::ThreadContext::InitializeNative(HANDLE thread_handle) {
+  data_.resize(sizeof(CONTEXT));
+  initialized_ = true;
+  context<CONTEXT>()->ContextFlags = CONTEXT_ALL;
+  if (!GetThreadContext(thread_handle, context<CONTEXT>())) {
+    PLOG(ERROR) << "GetThreadContext";
+    return false;
+  }
+  return true;
+}
+
+#if defined(ARCH_CPU_64_BITS)
+bool ProcessReaderWin::ThreadContext::InitializeWow64(HANDLE thread_handle) {
+  data_.resize(sizeof(WOW64_CONTEXT));
+  initialized_ = true;
+  context<WOW64_CONTEXT>()->ContextFlags = CONTEXT_ALL;
+  if (!Wow64GetThreadContext(thread_handle, context<WOW64_CONTEXT>())) {
+    PLOG(ERROR) << "Wow64GetThreadContext";
+    return false;
+  }
+  return true;
+}
+#endif
+
+#if defined(ARCH_CPU_X86_64)
+bool ProcessReaderWin::ThreadContext::InitializeXState(
+    HANDLE thread_handle,
+    ULONG64 XStateCompactionMask) {
+  // InitializeContext2 needs Windows 10 build 20348.
+  static const auto initialize_context_2 =
+      GET_FUNCTION(L"kernel32.dll", ::InitializeContext2);
+  if (!initialize_context_2)
+    return false;
+  // We want CET_U xstate to get the ssp, only possible when supported.
+  PCONTEXT ret_context = nullptr;
+  DWORD context_size = 0;
+  if (!initialize_context_2(nullptr,
+                            CONTEXT_ALL | CONTEXT_XSTATE,
+                            &ret_context,
+                            &context_size,
+                            XStateCompactionMask) &&
+      GetLastError() != ERROR_INSUFFICIENT_BUFFER) {
+    PLOG(ERROR) << "InitializeContext2 - getting required size";
+    return false;
+  }
+  // NB: ret_context may not be data.begin().
+  data_.resize(context_size);
+  if (!initialize_context_2(data_.data(),
+                            CONTEXT_ALL | CONTEXT_XSTATE,
+                            &ret_context,
+                            &context_size,
+                            XStateCompactionMask)) {
+    PLOG(ERROR) << "InitializeContext2 - initializing";
+    return false;
+  }
+  offset_ = reinterpret_cast<unsigned char*>(ret_context) - data_.data();
+  initialized_ = true;
+
+  if (!GetThreadContext(thread_handle, ret_context)) {
+    PLOG(ERROR) << "GetThreadContext";
+    return false;
+  }
+
+  return true;
+}
+#endif  // defined(ARCH_CPU_X86_64)
+
 ProcessReaderWin::Thread::Thread()
     : context(),
+      name(),
       id(0),
       teb_address(0),
       teb_size(0),
@@ -203,8 +381,7 @@ ProcessReaderWin::Thread::Thread()
       stack_region_size(0),
       suspend_count(0),
       priority_class(0),
-      priority(0) {
-}
+      priority(0) {}
 
 ProcessReaderWin::ProcessReaderWin()
     : process_(INVALID_HANDLE_VALUE),
@@ -214,11 +391,9 @@ ProcessReaderWin::ProcessReaderWin()
       modules_(),
       suspension_state_(),
       initialized_threads_(false),
-      initialized_() {
-}
+      initialized_() {}
 
-ProcessReaderWin::~ProcessReaderWin() {
-}
+ProcessReaderWin::~ProcessReaderWin() {}
 
 bool ProcessReaderWin::Initialize(HANDLE process,
                                   ProcessSuspensionState suspension_state) {
@@ -309,6 +484,45 @@ void ProcessReaderWin::ReadThreadData(bool is_64_reading_32) {
   if (!process_information)
     return;
 
+#ifdef CLIENT_STACKTRACES_ENABLED
+  DWORD options = SymGetOptions();
+  SymSetOptions(options | SYMOPT_UNDNAME | SYMOPT_DEFERRED_LOADS
+      | SYMOPT_FAIL_CRITICAL_ERRORS | SYMOPT_NO_PROMPTS);
+
+  // Build a dbghelp search path from every loaded module's directory so it
+  // can find each module's PDB next to its DLL and resolve symbols
+  std::wstring sym_search_path;
+  std::vector<ProcessInfo::Module> sym_modules;
+  if (process_info_.Modules(&sym_modules)) {
+    std::vector<std::wstring> dirs;
+    for (const auto& module : sym_modules) {
+      const std::wstring& module_path = module.name;
+      size_t sep = module_path.find_last_of(L"\\/");
+      if (sep == std::wstring::npos || sep == 0)
+        continue;
+      std::wstring dir = module_path.substr(0, sep);
+      bool dup = false;
+      for (const auto& existing : dirs) {
+        if (existing.size() == dir.size()
+            && _wcsicmp(existing.c_str(), dir.c_str()) == 0) {
+          dup = true;
+          break;
+        }
+      }
+      if (dup)
+        continue;
+      dirs.push_back(dir);
+      if (!sym_search_path.empty())
+        sym_search_path.push_back(L';');
+      sym_search_path.append(dir);
+    }
+  }
+
+  SymInitializeW(process_,
+      sym_search_path.empty() ? nullptr : sym_search_path.c_str(),
+      TRUE);
+#endif
+
   for (unsigned long i = 0; i < process_information->NumberOfThreads; ++i) {
     const process_types::SYSTEM_THREAD_INFORMATION<Traits>& thread_info =
         process_information->Threads[i];
@@ -319,7 +533,8 @@ void ProcessReaderWin::ReadThreadData(bool is_64_reading_32) {
     if (!thread_handle.is_valid())
       continue;
 
-    if (!FillThreadContextAndSuspendCount<Traits>(thread_handle.get(),
+    if (!FillThreadContextAndSuspendCount<Traits>(process_,
+                                                  thread_handle.get(),
                                                   &thread,
                                                   suspension_state_,
                                                   is_64_reading_32)) {
@@ -379,6 +594,21 @@ void ProcessReaderWin::ReadThreadData(bool is_64_reading_32) {
         thread.stack_region_size = 0;
       } else {
         thread.stack_region_size = base - limit;
+      }
+    }
+    // On Windows 10 build 1607 and later, read the thread name.
+    static const auto get_thread_description =
+        GET_FUNCTION(L"kernel32.dll", ::GetThreadDescription);
+    if (get_thread_description) {
+      wchar_t* thread_description;
+      HRESULT hr =
+          get_thread_description(thread_handle.get(), &thread_description);
+      if (SUCCEEDED(hr)) {
+        ScopedLocalAlloc thread_description_owner(thread_description);
+        thread.name = base::WideToUTF8(thread_description);
+      } else {
+        LOG(WARNING) << "GetThreadDescription: "
+                     << logging::SystemErrorCodeToString(hr);
       }
     }
     threads_.push_back(thread);

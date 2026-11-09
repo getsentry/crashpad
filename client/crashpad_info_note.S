@@ -1,4 +1,4 @@
-// Copyright 2018 The Crashpad Authors. All rights reserved.
+// Copyright 2018 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@
 // that symbol to be in the dynamic symbol table.
 
 #include "util/misc/elf_note_types.h"
-#include "util/misc/arm64_bti_note.S"
+#include "util/misc/arm64_pac_bti.S"
 
 // namespace crashpad {
 // CrashpadInfo g_crashpad_info;
@@ -66,3 +66,4 @@ CRASHPAD_NOTE_REFERENCE:
   // linking Crashpad. The subtraction from |name| is a convenience to allow the
   // value to be computed statically.
   .quad name - CRASHPAD_NOTE
+  .section .note.GNU-stack,"",%progbits
