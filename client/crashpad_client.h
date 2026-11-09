@@ -15,6 +15,7 @@
 #ifndef CRASHPAD_CLIENT_CRASHPAD_CLIENT_H_
 #define CRASHPAD_CLIENT_CRASHPAD_CLIENT_H_
 
+#include <atomic>
 #include <functional>
 #include <map>
 #include <set>
@@ -899,6 +900,10 @@ class CrashpadClient {
   base::apple::ScopedMachSendRight exception_port_;
 #elif BUILDFLAG(IS_WIN)
   std::wstring ipc_pipe_;
+  // Set while the handler leaves attachment updates unanswered. Further
+  // updates then fail at once when no pipe instance is free, instead of each
+  // waiting for one that a stalled handler never frees.
+  std::atomic<bool> attachment_update_failed_ = false;
   ScopedKernelHANDLE handler_start_thread_;
   ScopedVectoredExceptionRegistration vectored_handler_;
 #elif BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_ANDROID)
