@@ -85,7 +85,7 @@ jobs:
     runs-on: ${{ matrix.platform }}
     container: ${{ matrix.container }}
     env:
-      CMAKE_DEFINES: "${{ matrix.CMAKE_DEFINES }}"
+      CMAKE_DEFINES: "-DCMAKE_COMPILE_WARNING_AS_ERROR=ON ${{ matrix.CMAKE_DEFINES }}"
     steps:
       - name: Installing Alpine Linux Dependencies
         if: ${{ contains(matrix.container, 'alpine') }}
