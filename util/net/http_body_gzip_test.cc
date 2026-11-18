@@ -143,6 +143,28 @@ std::string MakeString(size_t size) {
 constexpr size_t kFourKBytes = 4096;
 constexpr size_t kManyBytes = 375017;
 
+TEST(GzipHTTPBodyStream, DestroyUnread) {
+  GzipHTTPBodyStream gzip_stream(
+      std::make_unique<StringHTTPBodyStream>("unread"));
+}
+
+TEST(GzipHTTPBodyStream, DestroyPartial) {
+  GzipHTTPBodyStream gzip_stream(
+      std::make_unique<StringHTTPBodyStream>(MakeString(kManyBytes)));
+  uint8_t byte;
+  ASSERT_EQ(gzip_stream.GetBytesBuffer(&byte, sizeof(byte)), 1);
+  // The consumer stopped after the first byte of the gzip header.
+}
+
+TEST(GzipHTTPBodyStream, DestroyBeforeTrailer) {
+  GzipHTTPBodyStream gzip_stream(
+      std::make_unique<StringHTTPBodyStream>(std::string()));
+  uint8_t header[10];
+  ASSERT_EQ(gzip_stream.GetBytesBuffer(header, sizeof(header)),
+            static_cast<FileOperationResult>(sizeof(header)));
+  // The input is at EOF, but the compressed stream has not finished.
+}
+
 TEST(GzipHTTPBodyStream, Empty) {
   TestGzipDeflateInflate(std::string());
 }

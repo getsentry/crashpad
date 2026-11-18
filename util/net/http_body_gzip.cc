@@ -31,9 +31,15 @@ GzipHTTPBodyStream::GzipHTTPBodyStream(std::unique_ptr<HTTPBodyStream> source)
       state_(State::kUninitialized) {}
 
 GzipHTTPBodyStream::~GzipHTTPBodyStream() {
-  DCHECK(state_ == State::kUninitialized ||
-         state_ == State::kFinished ||
-         state_ == State::kError);
+  // A failed or cancelled upload may destroy the body before reaching EOF.
+  // deflateEnd() still releases all allocations in that case; Z_DATA_ERROR
+  // just means that the unfinished compressed data was discarded.
+  if (state_ == State::kOperating || state_ == State::kInputEOF) {
+    int zr = deflateEnd(z_stream_.get());
+    if (zr != Z_OK && zr != Z_DATA_ERROR) {
+      LOG(ERROR) << "deflateEnd: " << ZlibErrorString(zr);
+    }
+  }
 }
 
 FileOperationResult GzipHTTPBodyStream::GetBytesBuffer(uint8_t* buffer,
