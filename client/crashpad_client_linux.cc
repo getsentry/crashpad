@@ -596,9 +596,10 @@ bool CrashpadClient::InitializeSignalStackForThread() {
 #endif  // ADDRESS_SANITIZER
       const size_t kStackAllocSize = kStackSize + 2 * kGuardPageSize;
 
+      stack_t disabled;
+      disabled.ss_flags = SS_DISABLE;
       stack_t stack;
-      stack.ss_flags = SS_DISABLE;
-      if (sigaltstack(&stack, &stack) != 0) {
+      if (sigaltstack(&disabled, &stack) != 0) {
         PLOG(ERROR) << "sigaltstack";
       } else if (stack.ss_sp !=
                  static_cast<char*>(stack_mem) + kGuardPageSize) {

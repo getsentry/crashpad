@@ -117,7 +117,6 @@ if(MSVC)
     target_compile_options(crashpad_interface INTERFACE
         $<$<COMPILE_LANGUAGE:C,CXX>:/FS>
         $<$<COMPILE_LANGUAGE:C,CXX>:/W4>
-        $<$<COMPILE_LANGUAGE:C,CXX>:/WX>
         $<$<COMPILE_LANGUAGE:C,CXX>:/bigobj> # Support larger number of sections in obj file.
         $<$<COMPILE_LANGUAGE:C,CXX>:/wd4100> # Unreferenced formal parameter.
         $<$<COMPILE_LANGUAGE:C,CXX>:/wd4127> # Conditional expression is constant.
@@ -134,10 +133,15 @@ if(MSVC)
         $<$<AND:$<COMPILE_LANGUAGE:C,CXX>,$<C_COMPILER_ID:Clang>>:-Wno-cast-function-type-mismatch> # only Clang-CL
         $<$<AND:$<COMPILE_LANGUAGE:C,CXX>,$<C_COMPILER_ID:Clang>>:-Wno-return-type>
     )
-elseif(MINGW)
-    # redirect to wmain
-    # FIXME: cmake 3.13 added target_link_options
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -municode")
+else()
+    # precede per-target -Wno-* flags, which clang applies in order
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
+    if(MINGW)
+        # redirect to wmain
+        # FIXME: cmake 3.13 added target_link_options
+        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -municode")
+    endif()
 endif()
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
@@ -183,6 +187,7 @@ add_subdirectory(handler)
 if(CRASHPAD_ENABLE_STACKTRACE AND APPLE AND NOT IOS)
     set(LIBUNWIND_ENABLE_SHARED OFF)
     add_subdirectory(libunwind)
+    set_property(TARGET unwind_static PROPERTY COMPILE_WARNING_AS_ERROR OFF)
     crashpad_install_target(unwind_static)
 endif()
 

@@ -90,12 +90,12 @@ ProcessReaderMac::Module::Module() : name(), reader(nullptr), timestamp(0) {}
 ProcessReaderMac::Module::~Module() {}
 
 ProcessReaderMac::ProcessReaderMac()
-    : process_info_(),
+    : task_(TASK_NULL),
+      process_info_(),
       threads_(),
       modules_(),
       module_readers_(),
       process_memory_(),
-      task_(TASK_NULL),
       initialized_(),
 #if defined(CRASHPAD_MAC_32_BIT_SUPPORT)
       is_64_bit_(false),

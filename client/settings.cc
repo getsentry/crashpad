@@ -213,7 +213,7 @@ bool SettingsReader::ReadSettings(FileHandle handle,
   // This clears `out_data` so that any bytes not read from disk are zero
   // initialized. This is expected when reading from an older settings file with
   // fewer fields.
-  memset(out_data, 0, sizeof(*out_data));
+  memset(static_cast<void*>(out_data), 0, sizeof(*out_data));
 
   const FileOperationResult read_result =
       log_read_error ? LoggingReadFileUntil(handle, out_data, sizeof(*out_data))

@@ -88,6 +88,7 @@ if(CRASHPAD_BUILD_TOOLS)
         target_compile_definitions(crashpad_generate_dump PRIVATE
             WIN32_LEAN_AND_MEAN
             NOMINMAX
+            _CRT_NONSTDC_NO_WARNINGS
         )
     endif()
     if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
@@ -150,6 +151,7 @@ if(CRASHPAD_BUILD_TOOLS)
             mac/on_demand_service_tool.mm
         )
         setup_apple_tool(on_demand_service_tool)
+        target_compile_options(on_demand_service_tool PRIVATE -fobjc-arc)
         target_link_libraries(on_demand_service_tool PRIVATE
             "-framework CoreFoundation"
             "-framework Foundation"

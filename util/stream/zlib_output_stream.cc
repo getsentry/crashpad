@@ -36,11 +36,13 @@ ZlibOutputStream::~ZlibOutputStream() {
     return;
   DCHECK(!flush_needed_);
   if (mode_ == Mode::kCompress) {
-    if (deflateEnd(&zlib_stream_) != Z_OK)
+    if (deflateEnd(&zlib_stream_) != Z_OK) {
       LOG(ERROR) << "deflateEnd: " << zlib_stream_.msg;
+    }
   } else if (mode_ == Mode::kDecompress) {
-    if (inflateEnd(&zlib_stream_) != Z_OK)
+    if (inflateEnd(&zlib_stream_) != Z_OK) {
       LOG(ERROR) << "inflateEnd: " << zlib_stream_.msg;
+    }
   }
 }
 
