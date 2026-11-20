@@ -570,7 +570,7 @@ if(WIN32)
             $<$<COMPILE_LANGUAGE:CXX>:-municode>
         )
         target_compile_definitions(crashpad_util PRIVATE
-            "__STDC_VERSION__=199901L"
+            $<$<COMPILE_LANGUAGE:CXX>:__STDC_VERSION__=199901L>
             $<$<COMPILE_LANGUAGE:ASM_MASM>:__MINGW32__>
         )
         #exception_handler_server.cc missing <memory> header ?
