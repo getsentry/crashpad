@@ -1,4 +1,4 @@
-// Copyright 2017 The Crashpad Authors. All rights reserved.
+// Copyright 2017 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 #include <utility>
 
+#include "base/check_op.h"
 #include "base/logging.h"
 #include "base/numerics/safe_conversions.h"
 #include "third_party/zlib/zlib_crashpad.h"
@@ -30,9 +31,15 @@ GzipHTTPBodyStream::GzipHTTPBodyStream(std::unique_ptr<HTTPBodyStream> source)
       state_(State::kUninitialized) {}
 
 GzipHTTPBodyStream::~GzipHTTPBodyStream() {
-  DCHECK(state_ == State::kUninitialized ||
-         state_ == State::kFinished ||
-         state_ == State::kError);
+  // A failed or cancelled upload may destroy the body before reaching EOF.
+  // deflateEnd() still releases all allocations in that case; Z_DATA_ERROR
+  // just means that the unfinished compressed data was discarded.
+  if (state_ == State::kOperating || state_ == State::kInputEOF) {
+    int zr = deflateEnd(z_stream_.get());
+    if (zr != Z_OK && zr != Z_DATA_ERROR) {
+      LOG(ERROR) << "deflateEnd: " << ZlibErrorString(zr);
+    }
+  }
 }
 
 FileOperationResult GzipHTTPBodyStream::GetBytesBuffer(uint8_t* buffer,

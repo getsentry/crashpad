@@ -1,4 +1,4 @@
-// Copyright 2015 The Crashpad Authors. All rights reserved.
+// Copyright 2015 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,8 +19,11 @@
 #include <sddl.h>
 #include <stddef.h>
 
-#include "base/cxx17_backports.h"
+#include <iterator>
+
+#include "base/check.h"
 #include "base/logging.h"
+#include "base/numerics/safe_conversions.h"
 #include "util/win/exception_handler_server.h"
 #include "util/win/loader_lock.h"
 #include "util/win/scoped_handle.h"
@@ -139,6 +142,127 @@ bool SendToCrashHandlerServer(const std::wstring& pipe_name,
   }
 }
 
+namespace {
+
+// A handler that is suspended or hung never frees a pipe instance or answers.
+// Payloads are sent from the client's own threads, so each of their waits
+// gives up after this long.
+constexpr DWORD kPayloadTimeoutMs = 5000;
+
+// Finishes an overlapped ReadFile() or WriteFile() of |size| bytes on |pipe|
+// that returned |started|. If it is still pending after kPayloadTimeoutMs, it
+// is cancelled and the last error is ERROR_TIMEOUT.
+bool FinishOverlapped(HANDLE pipe,
+                      OVERLAPPED* overlapped,
+                      BOOL started,
+                      DWORD size) {
+  if (!started && GetLastError() != ERROR_IO_PENDING) {
+    return false;
+  }
+  DWORD transferred = 0;
+  if (WaitForSingleObject(overlapped->hEvent, kPayloadTimeoutMs) !=
+      WAIT_OBJECT_0) {
+    CancelIoEx(pipe, overlapped);
+    GetOverlappedResult(pipe, overlapped, &transferred, TRUE);
+    SetLastError(ERROR_TIMEOUT);
+    return false;
+  }
+  return GetOverlappedResult(pipe, overlapped, &transferred, FALSE) &&
+         transferred == size;
+}
+
+bool WriteOverlapped(HANDLE pipe,
+                     OVERLAPPED* overlapped,
+                     const void* data,
+                     size_t size) {
+  const DWORD length = base::checked_cast<DWORD>(size);
+  return FinishOverlapped(pipe,
+                          overlapped,
+                          ::WriteFile(pipe, data, length, nullptr, overlapped),
+                          length);
+}
+
+}  // namespace
+
+bool SendPayloadToCrashHandlerServer(
+    const std::wstring& pipe_name,
+    const ClientToServerMessage& message,
+    base::span<const uint8_t> head,
+    base::span<const uint8_t> tail,
+    ServerToClientMessage* response,
+    bool wait_for_instance) {
+  ScopedKernelHANDLE event(CreateEvent(nullptr, true, false, nullptr));
+  if (!event.is_valid()) {
+    PLOG(ERROR) << "CreateEvent";
+    return false;
+  }
+
+  // Retry CreateFile() in a loop (follows the logic in
+  // SendToCrashHandlerServer).
+  for (;;) {
+    ScopedFileHANDLE pipe(
+        CreateFile(pipe_name.c_str(),
+                   GENERIC_READ | GENERIC_WRITE,
+                   0,
+                   nullptr,
+                   OPEN_EXISTING,
+                   SECURITY_SQOS_PRESENT | SECURITY_IDENTIFICATION |
+                       FILE_FLAG_OVERLAPPED,
+                   nullptr));
+    if (!pipe.is_valid()) {
+      if (GetLastError() != ERROR_PIPE_BUSY || !wait_for_instance) {
+        PLOG(ERROR) << "CreateFile";
+        return false;
+      }
+
+      if (!WaitNamedPipe(pipe_name.c_str(), kPayloadTimeoutMs)) {
+        PLOG(ERROR) << "WaitNamedPipe";
+        return false;
+      }
+
+      continue;
+    }
+
+    DWORD mode = PIPE_READMODE_MESSAGE;
+    if (!SetNamedPipeHandleState(pipe.get(), &mode, nullptr, nullptr)) {
+      PLOG(ERROR) << "SetNamedPipeHandleState";
+      return false;
+    }
+
+    OVERLAPPED overlapped = {};
+    overlapped.hEvent = event.get();
+
+    if (!WriteOverlapped(pipe.get(), &overlapped, &message, sizeof(message))) {
+      PLOG(ERROR) << "WriteFile (header)";
+      return false;
+    }
+
+    if (!head.empty() &&
+        !WriteOverlapped(pipe.get(), &overlapped, head.data(), head.size())) {
+      PLOG(ERROR) << "WriteFile (payload head)";
+      return false;
+    }
+
+    if (!tail.empty() &&
+        !WriteOverlapped(pipe.get(), &overlapped, tail.data(), tail.size())) {
+      PLOG(ERROR) << "WriteFile (payload tail)";
+      return false;
+    }
+
+    if (!FinishOverlapped(
+            pipe.get(),
+            &overlapped,
+            ::ReadFile(
+                pipe.get(), response, sizeof(*response), nullptr, &overlapped),
+            sizeof(*response))) {
+      PLOG(ERROR) << "ReadFile (response)";
+      return false;
+    }
+
+    return true;
+  }
+}
+
 HANDLE CreateNamedPipeInstance(const std::wstring& pipe_name,
                                bool first_instance) {
   SECURITY_ATTRIBUTES security_attributes;
@@ -209,8 +333,7 @@ const void* GetFallbackSecurityDescriptorForNamedPipeInstance(size_t* size) {
               ACL_REVISION,  // AclRevision.
               0,  // Sbz1.
               sizeof(kSecDescBlob.sacl),  // AclSize.
-              static_cast<WORD>(
-                  base::size(kSecDescBlob.sacl.ace)),  // AceCount.
+              static_cast<WORD>(std::size(kSecDescBlob.sacl.ace)),  // AceCount.
               0,  // Sbz2.
           },
 
@@ -231,8 +354,8 @@ const void* GetFallbackSecurityDescriptorForNamedPipeInstance(size_t* size) {
                   {
                       SID_REVISION,  // Revision.
                                      // SubAuthorityCount.
-                      static_cast<BYTE>(base::size(
-                          kSecDescBlob.sacl.ace[0].sid.SubAuthority)),
+                      static_cast<BYTE>(
+                          std::size(kSecDescBlob.sacl.ace[0].sid.SubAuthority)),
                       // IdentifierAuthority.
                       {SECURITY_MANDATORY_LABEL_AUTHORITY},
                       {SECURITY_MANDATORY_UNTRUSTED_RID},  // SubAuthority.

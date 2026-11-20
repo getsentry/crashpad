@@ -1,4 +1,4 @@
-// Copyright 2015 The Crashpad Authors. All rights reserved.
+// Copyright 2015 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -65,6 +65,12 @@ struct CrashpadInfoClientOptions {
 
   //! \sa CrashpadInfo::set_gather_indirectly_referenced_memory()
   uint32_t indirectly_referenced_memory_cap;
+
+  //! \sa CrashpadInfo::set_limit_stack_capture_to_sp()
+  TriState limit_stack_capture_to_sp;
+
+  //! \sa CrashpadInfo::set_max_stack_capture_size()
+  uint32_t max_stack_capture_size;
 };
 
 }  // namespace crashpad

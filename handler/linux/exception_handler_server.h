@@ -1,4 +1,4 @@
-// Copyright 2017 The Crashpad Authors. All rights reserved.
+// Copyright 2017 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -111,6 +111,16 @@ class ExceptionHandlerServer {
         int broker_sock,
         UUID* local_report_id = nullptr) = 0;
 
+    //! \brief Called to add an attachment to the crash report.
+    virtual void AddAttachment(const base::FilePath& attachment) = 0;
+
+    //! \brief Called to remove an attachment from the crash report.
+    virtual void RemoveAttachment(const base::FilePath& attachment) = 0;
+
+    //! \brief Called when the server has received a request to retry pending
+    //!     report uploads.
+    virtual void RequestRetry() = 0;
+
     virtual ~Delegate() {}
   };
 
@@ -189,6 +199,7 @@ class ExceptionHandlerServer {
   Delegate* delegate_;
   ScopedFileHandle pollfd_;
   std::atomic<bool> keep_running_;
+  pid_t owner_process_id_;
   InitializationStateDcheck initialized_;
 };
 

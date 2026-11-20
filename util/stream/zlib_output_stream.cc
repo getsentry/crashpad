@@ -1,4 +1,4 @@
-// Copyright 2019 The Crashpad Authors. All rights reserved.
+// Copyright 2019 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,8 +14,9 @@
 
 #include "util/stream/zlib_output_stream.h"
 
+#include <iterator>
+
 #include "base/check.h"
-#include "base/cxx17_backports.h"
 #include "base/logging.h"
 #include "base/numerics/safe_conversions.h"
 #include "util/misc/zlib.h"
@@ -35,11 +36,13 @@ ZlibOutputStream::~ZlibOutputStream() {
     return;
   DCHECK(!flush_needed_);
   if (mode_ == Mode::kCompress) {
-    if (deflateEnd(&zlib_stream_) != Z_OK)
+    if (deflateEnd(&zlib_stream_) != Z_OK) {
       LOG(ERROR) << "deflateEnd: " << zlib_stream_.msg;
+    }
   } else if (mode_ == Mode::kDecompress) {
-    if (inflateEnd(&zlib_stream_) != Z_OK)
+    if (inflateEnd(&zlib_stream_) != Z_OK) {
       LOG(ERROR) << "inflateEnd: " << zlib_stream_.msg;
+    }
   }
 }
 
@@ -65,7 +68,7 @@ bool ZlibOutputStream::Write(const uint8_t* data, size_t size) {
       }
     }
     zlib_stream_.next_out = buffer_;
-    zlib_stream_.avail_out = base::saturated_cast<uInt>(base::size(buffer_));
+    zlib_stream_.avail_out = base::saturated_cast<uInt>(std::size(buffer_));
     initialized_.set_valid();
   }
 
@@ -127,12 +130,12 @@ bool ZlibOutputStream::Flush() {
 }
 
 bool ZlibOutputStream::WriteOutputStream() {
-  auto valid_size = base::size(buffer_) - zlib_stream_.avail_out;
+  auto valid_size = std::size(buffer_) - zlib_stream_.avail_out;
   if (valid_size > 0 && !output_stream_->Write(buffer_, valid_size))
     return false;
 
   zlib_stream_.next_out = buffer_;
-  zlib_stream_.avail_out = base::saturated_cast<uInt>(base::size(buffer_));
+  zlib_stream_.avail_out = base::saturated_cast<uInt>(std::size(buffer_));
 
   return true;
 }

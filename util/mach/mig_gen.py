@@ -1,6 +1,6 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
-# Copyright 2019 The Crashpad Authors. All rights reserved.
+# Copyright 2019 The Crashpad Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -83,7 +83,12 @@ def parse_args(args, multiple_arch=False):
     parser.add_argument('server_c')
     parser.add_argument('user_h')
     parser.add_argument('server_h')
-    return parser.parse_args(args)
+
+    # This is a HACK to parse arch from env when cmake is configured to use xcode
+    parsed = parser.parse_args(args)
+    if multiple_arch and len(parsed.arch) == 1 and parsed.arch[0] == "FROM_ENV":
+        parsed.arch = os.environ.get("ARCHS", "").split(" ")
+    return parsed
 
 
 def main(args):

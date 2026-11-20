@@ -1,4 +1,4 @@
-// Copyright 2020 The Crashpad Authors. All rights reserved.
+// Copyright 2020 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -121,6 +121,9 @@ bool ProcessSnapshotIOSIntermediateDump::InitializeWithFileInterface(
     return false;
   }
   system_.Initialize(system_info);
+
+  annotations_simple_map_["crashpad_uptime_ns"] =
+      std::to_string(system_.CrashpadUptime());
 
   // Threads
   const IOSIntermediateDumpList* thread_list =
@@ -301,7 +304,25 @@ std::vector<HandleSnapshot> ProcessSnapshotIOSIntermediateDump::Handles()
 std::vector<const MemorySnapshot*>
 ProcessSnapshotIOSIntermediateDump::ExtraMemory() const {
   INITIALIZATION_STATE_DCHECK_VALID(initialized_);
-  return std::vector<const MemorySnapshot*>();
+  std::vector<const MemorySnapshot*> extra_memory;
+  for (const auto& module : modules_) {
+    for (const auto& memory : module->ExtraMemory()) {
+      extra_memory.push_back(memory);
+    }
+  }
+  return extra_memory;
+}
+
+std::vector<const MemorySnapshot*>
+ProcessSnapshotIOSIntermediateDump::IntermediateDumpExtraMemory() const {
+  INITIALIZATION_STATE_DCHECK_VALID(initialized_);
+  std::vector<const MemorySnapshot*> intermediate_dump_extra_memory;
+  for (const auto& module : modules_) {
+    for (const auto& memory : module->IntermediateDumpExtraMemory()) {
+      intermediate_dump_extra_memory.push_back(memory);
+    }
+  }
+  return intermediate_dump_extra_memory;
 }
 
 const ProcessMemory* ProcessSnapshotIOSIntermediateDump::Memory() const {

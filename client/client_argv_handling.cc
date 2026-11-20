@@ -1,4 +1,4 @@
-// Copyright 2018 The Crashpad Authors. All rights reserved.
+// Copyright 2018 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -32,9 +32,13 @@ std::vector<std::string> BuildHandlerArgvStrings(
     const base::FilePath& database,
     const base::FilePath& metrics_dir,
     const std::string& url,
+    const std::string& http_proxy,
     const std::map<std::string, std::string>& annotations,
     const std::vector<std::string>& arguments,
-    const std::vector<base::FilePath>& attachments) {
+    const std::vector<base::FilePath>& attachments,
+    const base::FilePath& crash_reporter,
+    const base::FilePath& crash_envelope,
+    const std::string& report_id) {
   std::vector<std::string> argv_strings(1, handler.value());
 
   for (const auto& argument : arguments) {
@@ -54,6 +58,10 @@ std::vector<std::string> BuildHandlerArgvStrings(
     argv_strings.push_back(FormatArgumentString("url", url));
   }
 
+  if (!http_proxy.empty()) {
+    argv_strings.push_back(FormatArgumentString("http-proxy", http_proxy));
+  }
+
   for (const auto& kv : annotations) {
     argv_strings.push_back(
         FormatArgumentString("annotation", kv.first + '=' + kv.second));
@@ -62,6 +70,20 @@ std::vector<std::string> BuildHandlerArgvStrings(
   for (const auto& attachment : attachments) {
     argv_strings.push_back(
         FormatArgumentString("attachment", attachment.value()));
+  }
+
+  if (!crash_reporter.empty()) {
+    argv_strings.push_back(
+        FormatArgumentString("crash-reporter", crash_reporter.value()));
+  }
+
+  if (!crash_envelope.empty()) {
+    argv_strings.push_back(
+        FormatArgumentString("crash-envelope", crash_envelope.value()));
+  }
+
+  if (!report_id.empty()) {
+    argv_strings.push_back(FormatArgumentString("report-id", report_id));
   }
 
   return argv_strings;

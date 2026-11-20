@@ -1,4 +1,4 @@
-// Copyright 2014 The Crashpad Authors. All rights reserved.
+// Copyright 2014 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,7 +16,9 @@
 
 #include <utility>
 
+#include "base/check_op.h"
 #include "base/logging.h"
+#include "build/build_config.h"
 #include "minidump/minidump_crashpad_info_writer.h"
 #include "minidump/minidump_exception_writer.h"
 #include "minidump/minidump_handle_writer.h"
@@ -24,8 +26,12 @@
 #include "minidump/minidump_memory_writer.h"
 #include "minidump/minidump_misc_info_writer.h"
 #include "minidump/minidump_module_writer.h"
+#ifdef CLIENT_STACKTRACES_ENABLED
+#include "minidump/minidump_stacktrace_writer.h"
+#endif
 #include "minidump/minidump_system_info_writer.h"
 #include "minidump/minidump_thread_id_map.h"
+#include "minidump/minidump_thread_name_list_writer.h"
 #include "minidump/minidump_thread_writer.h"
 #include "minidump/minidump_unloaded_module_writer.h"
 #include "minidump/minidump_user_extension_stream_data_source.h"
@@ -34,6 +40,7 @@
 #include "snapshot/exception_snapshot.h"
 #include "snapshot/module_snapshot.h"
 #include "snapshot/process_snapshot.h"
+#include "snapshot/thread_snapshot.h"
 #include "util/file/file_writer.h"
 #include "util/numeric/safe_assignment.h"
 
@@ -51,8 +58,7 @@ MinidumpFileWriter::MinidumpFileWriter()
   header_.Flags = MiniDumpNormal;
 }
 
-MinidumpFileWriter::~MinidumpFileWriter() {
-}
+MinidumpFileWriter::~MinidumpFileWriter() {}
 
 void MinidumpFileWriter::InitializeFromSnapshot(
     const ProcessSnapshot* process_snapshot) {
@@ -79,6 +85,9 @@ void MinidumpFileWriter::InitializeFromSnapshot(
 
   auto misc_info = std::make_unique<MinidumpMiscInfoWriter>();
   misc_info->InitializeFromSnapshot(process_snapshot);
+  if (misc_info->HasXStateData())
+    header_.Flags = header_.Flags | MiniDumpWithAvxXStateContext;
+
   add_stream_result = AddStream(std::move(misc_info));
   DCHECK(add_stream_result);
 
@@ -91,10 +100,34 @@ void MinidumpFileWriter::InitializeFromSnapshot(
   add_stream_result = AddStream(std::move(thread_list));
   DCHECK(add_stream_result);
 
+  bool has_thread_name = false;
+  for (const ThreadSnapshot* thread_snapshot : process_snapshot->Threads()) {
+    if (!thread_snapshot->ThreadName().empty()) {
+      has_thread_name = true;
+      break;
+    }
+  }
+  if (has_thread_name) {
+    auto thread_name_list = std::make_unique<MinidumpThreadNameListWriter>();
+    thread_name_list->InitializeFromSnapshot(process_snapshot->Threads(),
+                                             thread_id_map);
+    add_stream_result = AddStream(std::move(thread_name_list));
+    DCHECK(add_stream_result);
+  }
+
   const ExceptionSnapshot* exception_snapshot = process_snapshot->Exception();
   if (exception_snapshot) {
     auto exception = std::make_unique<MinidumpExceptionWriter>();
-    exception->InitializeFromSnapshot(exception_snapshot, thread_id_map);
+#if BUILDFLAG(IS_IOS)
+    // It's expected that iOS intermediate dumps can be written with missing
+    // information, but it's better to try and report as much as possible
+    // rather than drop the incomplete minidump.
+    constexpr bool allow_missing_thread_id_from_map = true;
+#else
+    constexpr bool allow_missing_thread_id_from_map = false;
+#endif
+    exception->InitializeFromSnapshot(
+        exception_snapshot, thread_id_map, allow_missing_thread_id_from_map);
     add_stream_result = AddStream(std::move(exception));
     DCHECK(add_stream_result);
   }
@@ -103,6 +136,14 @@ void MinidumpFileWriter::InitializeFromSnapshot(
   module_list->InitializeFromSnapshot(process_snapshot->Modules());
   add_stream_result = AddStream(std::move(module_list));
   DCHECK(add_stream_result);
+
+#ifdef CLIENT_STACKTRACES_ENABLED
+  auto stacktrace_list = std::make_unique<MinidumpStacktraceListWriter>();
+  stacktrace_list->InitializeFromSnapshot(
+      process_snapshot->Threads(), thread_id_map, exception_snapshot);
+  add_stream_result = AddStream(std::move(stacktrace_list));
+  DCHECK(add_stream_result);
+#endif
 
   auto unloaded_modules = process_snapshot->UnloadedModules();
   if (!unloaded_modules.empty()) {

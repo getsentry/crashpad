@@ -1,4 +1,4 @@
-// Copyright 2017 The Crashpad Authors. All rights reserved.
+// Copyright 2017 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -44,23 +44,34 @@ class ThreadSnapshotLinux final : public ThreadSnapshot {
   //!     the thread.
   //! \param[in] thread The thread within the ProcessReaderLinux for
   //!     which the snapshot should be created.
+  //! \param[inout] gather_indirectly_referenced_memory_bytes_remaining The
+  //!     remaining budget for indirectly referenced memory, honored on entry
+  //!     and updated on return.
+  //! \param[in] max_stack_capture_size The maximum stack capture size. `0`
+  //!     disables the limit.
   //!
   //! \return `true` if the snapshot could be created, `false` otherwise with
   //!     a message logged.
   bool Initialize(
       ProcessReaderLinux* process_reader,
       const ProcessReaderLinux::Thread& thread,
-      uint32_t* gather_indirectly_referenced_memory_bytes_remaining);
+      uint32_t* gather_indirectly_referenced_memory_bytes_remaining,
+      LinuxVMSize max_stack_capture_size = 0);
 
   // ThreadSnapshot:
 
   const CPUContext* Context() const override;
   const MemorySnapshot* Stack() const override;
   uint64_t ThreadID() const override;
+  std::string ThreadName() const override;
   int SuspendCount() const override;
   int Priority() const override;
   uint64_t ThreadSpecificDataAddress() const override;
   std::vector<const MemorySnapshot*> ExtraMemory() const override;
+
+#ifdef CLIENT_STACKTRACES_ENABLED
+  void TrimStackTrace(uint64_t exception_address);
+#endif
 
  private:
   union {
@@ -73,6 +84,8 @@ class ThreadSnapshotLinux final : public ThreadSnapshot {
 #elif defined(ARCH_CPU_MIPS_FAMILY)
     CPUContextMIPS mipsel;
     CPUContextMIPS64 mips64;
+#elif defined(ARCH_CPU_RISCV64)
+    CPUContextRISCV64 riscv64;
 #else
 #error Port.
 #endif  // ARCH_CPU_X86_FAMILY
@@ -80,6 +93,7 @@ class ThreadSnapshotLinux final : public ThreadSnapshot {
   CPUContext context_;
   MemorySnapshotGeneric stack_;
   LinuxVMAddress thread_specific_data_address_;
+  std::string thread_name_;
   pid_t thread_id_;
   int priority_;
   InitializationStateDcheck initialized_;

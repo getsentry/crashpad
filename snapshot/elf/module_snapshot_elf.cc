@@ -1,4 +1,4 @@
-// Copyright 2018 The Crashpad Authors. All rights reserved.
+// Copyright 2018 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -100,6 +100,7 @@ bool ModuleSnapshotElf::GetCrashpadOptions(CrashpadInfoClientOptions* options) {
       crashpad_info_->GatherIndirectlyReferencedMemory();
   options->indirectly_referenced_memory_cap =
       crashpad_info_->IndirectlyReferencedMemoryCap();
+  options->max_stack_capture_size = crashpad_info_->MaxStackCaptureSize();
   return true;
 }
 

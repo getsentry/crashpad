@@ -1,5 +1,5 @@
 <!--
-Copyright 2015 The Crashpad Authors. All rights reserved.
+Copyright 2015 The Crashpad Authors
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -40,3 +40,12 @@ https://chromium.googlesource.com/crashpad/crashpad.
    perform automated builds and tests.
  * [crashpad-dev](https://groups.google.com/a/chromium.org/group/crashpad-dev)
    is the Crashpad developers’ mailing list.
+
+## Sentry modifications
+
+See [README.getsentry.md](README.getsentry.md) for more information on the
+changes, and on maintaining the fork.
+
+Generating patch:
+
+    git format-patch --stdout master...HEAD > getsentry.patch
