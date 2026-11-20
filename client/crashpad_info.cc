@@ -98,8 +98,12 @@ __attribute__((
 
 // Put the struct in a section name CPADinfo where it can be found without the
 // symbol table.
+#if defined(COMPILER_MSVC)
 #pragma section("CPADinfo", read, write)
 __declspec(allocate("CPADinfo"))
+#else
+__attribute__((section("CPADinfo")))
+#endif
 
 #else  // !BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_WIN)
 #error Port
